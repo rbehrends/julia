@@ -1,5 +1,10 @@
 # Makefile for building documentation
 
+skip:
+	@echo SKIPPING BUILD DOCS
+	mkdir -p _build/html
+
+
 default: html
 
 # You can set these variables from the command line.
