@@ -255,6 +255,10 @@ importall .Order
 include("sort.jl")
 importall .Sort
 
+# Fast math
+include("fastmath.jl")
+importall .FastMath
+
 function deepcopy_internal end
 
 # BigInts and BigFloats
@@ -339,10 +343,6 @@ include("dft.jl")
 importall .DFT
 include("dsp.jl")
 importall .DSP
-
-# Fast math
-include("fastmath.jl")
-importall .FastMath
 
 # libgit2 support
 include("libgit2/libgit2.jl")

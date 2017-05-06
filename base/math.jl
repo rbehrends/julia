@@ -2,7 +2,7 @@
 
 module Math
 
-export sin, cos, tan, sinh, cosh, tanh, asin, acos, atan,
+export sin, cos, sincos, tan, sinh, cosh, tanh, asin, acos, atan,
        asinh, acosh, atanh, sec, csc, cot, asec, acsc, acot,
        sech, csch, coth, asech, acsch, acoth,
        sinpi, cospi, sinc, cosc,
@@ -417,6 +417,14 @@ for f in (:sin, :cos, :tan, :asin, :acos, :acosh, :atanh, :log, :log2, :log10,
         @inline ($f)(x::Float32) = nan_dom_err(ccall(($(string(f, "f")), libm), Float32, (Float32,), x), x)
         @inline ($f)(x::Real) = ($f)(float(x))
     end
+end
+
+@inline function sincos(x)
+    res = Base.FastMath.sincos_fast(x)
+    if (isnan(res[1]) | isnan(res[2])) & !isnan(x)
+        throw(DomainError())
+    end
+    return res
 end
 
 sqrt(x::Float64) = sqrt_llvm(x)
