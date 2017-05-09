@@ -777,3 +777,6 @@ function break_21369()
     end
 end
 @test_throws ErrorException break_21369()  # not TypeError
+
+# missing method should be inferred as Union{}, ref https://github.com/JuliaLang/julia/issues/20033#issuecomment-282228948
+@test Base.return_types(f -> f(1), (typeof((x::String) -> x),)) == Any[Union{}]
