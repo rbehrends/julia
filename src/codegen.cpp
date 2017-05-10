@@ -4165,8 +4165,8 @@ static jl_cgval_t emit_expr(jl_value_t *expr, jl_codectx_t *ctx)
         jl_binding_t *bnd = NULL;
         bool issym = jl_is_symbol(mn);
         bool isglobalref = !issym && jl_is_globalref(mn);
+        jl_module_t *mod = ctx->module;
         if (issym || isglobalref) {
-            jl_module_t *mod = ctx->module;
             if (isglobalref) {
                 mod = jl_globalref_mod(mn);
                 mn = (jl_value_t*)jl_globalref_name(mn);
@@ -4185,17 +4185,22 @@ static jl_cgval_t emit_expr(jl_value_t *expr, jl_codectx_t *ctx)
             name = literal_pointer_val((jl_value_t*)slot_symbol(sl, ctx));
         }
         if (bp) {
-            Value *mdargs[4] = { name, bp, bp_owner, literal_pointer_val(bnd) };
+            Value *mdargs[5] = { name, literal_pointer_val((jl_value_t*)mod), bp, bp_owner, literal_pointer_val(bnd) };
             jl_cgval_t gf = mark_julia_type(
-                    builder.CreateCall(prepare_call(jlgenericfunction_func), ArrayRef<Value*>(&mdargs[0], 4)),
+                    builder.CreateCall(prepare_call(jlgenericfunction_func), makeArrayRef(mdargs)),
                     true, jl_function_type, ctx);
             if (jl_expr_nargs(ex) == 1)
                 return gf;
         }
         Value *a1 = boxed(emit_expr(args[1], ctx), ctx);
         Value *a2 = boxed(emit_expr(args[2], ctx), ctx);
-        Value *mdargs[3] = { a1, a2, literal_pointer_val(args[3]) };
-        builder.CreateCall(prepare_call(jlmethod_func), ArrayRef<Value*>(&mdargs[0], 3));
+        Value *mdargs[4] = {
+            /*argdata*/a1,
+            /*code*/a2,
+            /*module*/literal_pointer_val((jl_value_t*)ctx->module),
+            /*isstaged*/literal_pointer_val(args[3])
+        };
+        builder.CreateCall(prepare_call(jlmethod_func), makeArrayRef(mdargs));
         return ghostValue(jl_void_type);
     }
     else if (head == const_sym) {
@@ -4271,7 +4276,11 @@ static jl_cgval_t emit_expr(jl_value_t *expr, jl_codectx_t *ctx)
             JL_FEAT_REQUIRE(ctx, runtime);
             // call interpreter to run a toplevel expr from inside a
             // compiled toplevel thunk.
-            builder.CreateCall(prepare_call(jltopeval_func), literal_pointer_val(expr));
+            Value *args[2] = {
+                literal_pointer_val((jl_value_t*)ctx->module),
+                literal_pointer_val(expr)
+            };
+            builder.CreateCall(prepare_call(jltopeval_func), args);
             return ghostValue(jl_void_type);
         }
         if (head == abstracttype_sym || head == compositetype_sym ||
@@ -5156,7 +5165,7 @@ static std::unique_ptr<Module> emit_function(
     std::map<int, jl_arrayvar_t> arrayvars;
     std::map<int, BasicBlock*> labels;
     ctx.arrayvars = &arrayvars;
-    ctx.module = lam->def ? lam->def->module : ptls->current_module;
+    ctx.module = lam->def ? lam->def->module : ptls->current_module; // TODO: maybe put module in `linfo->def`?
     ctx.linfo = lam;
     ctx.source = src;
     ctx.world = world;
@@ -6824,16 +6833,19 @@ static void init_julia_llvm_env(Module *m)
     exp_args.push_back(T_int1);
     expect_func = Intrinsic::getDeclaration(m, Intrinsic::expect, exp_args);
 
-    std::vector<Type*> args3(0);
-    args3.push_back(T_pjlvalue);
+    std::vector<Type*> args_topeval(0);
+    args_topeval.push_back(T_pjlvalue);
+    args_topeval.push_back(T_pjlvalue);
     jltopeval_func =
-        Function::Create(FunctionType::get(T_pjlvalue, args3, false),
+        Function::Create(FunctionType::get(T_pjlvalue, args_topeval, false),
                          Function::ExternalLinkage,
                          "jl_toplevel_eval", m);
     add_named_global(jltopeval_func, &jl_toplevel_eval);
 
+    std::vector<Type*> args_copyast(0);
+    args_copyast.push_back(T_pjlvalue);
     jlcopyast_func =
-        Function::Create(FunctionType::get(T_pjlvalue, args3, false),
+        Function::Create(FunctionType::get(T_pjlvalue, args_copyast, false),
                          Function::ExternalLinkage,
                          "jl_copy_ast", m);
     add_named_global(jlcopyast_func, &jl_copy_ast);
@@ -6850,6 +6862,7 @@ static void init_julia_llvm_env(Module *m)
     mdargs.push_back(T_pjlvalue);
     mdargs.push_back(T_pjlvalue);
     mdargs.push_back(T_pjlvalue);
+    mdargs.push_back(T_pjlvalue);
     jlmethod_func =
         Function::Create(FunctionType::get(T_void, mdargs, false),
                          Function::ExternalLinkage,
@@ -6857,6 +6870,7 @@ static void init_julia_llvm_env(Module *m)
     add_named_global(jlmethod_func, &jl_method_def);
 
     std::vector<Type*> funcdefargs(0);
+    funcdefargs.push_back(T_pjlvalue);
     funcdefargs.push_back(T_pjlvalue);
     funcdefargs.push_back(T_ppjlvalue);
     funcdefargs.push_back(T_pjlvalue);

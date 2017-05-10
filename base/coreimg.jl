@@ -4,23 +4,25 @@ Main.Core.eval(Main.Core, :(baremodule Inference
 using Core.Intrinsics
 import Core: print, println, show, write, unsafe_write, STDOUT, STDERR
 
-ccall(:jl_set_istopmod, Void, (Bool,), false)
+ccall(:jl_set_istopmod, Void, (Any, Bool), Inference, false)
 
 eval(x) = Core.eval(Inference, x)
 eval(m, x) = Core.eval(m, x)
 
 const include = Core.include
+
 # conditional to allow redefining Core.Inference after base exists
 isdefined(Main, :Base) || ((::Type{T})(arg) where {T} = convert(T, arg)::T)
 
 function return_type end
 
 ## Load essential files and libraries
-include("essentials.jl")
-include("ctypes.jl")
-include("generator.jl")
-include("reflection.jl")
-include("options.jl")
+include("essentials.jl", Inference)
+include("ctypes.jl", Inference)
+include("generator.jl", Inference)
+include("reflection.jl", Inference)
+include("options.jl", Inference)
+include(fname::String) = ccall(:jl_load_, Any, (Any, Any), fname, current_module())
 
 # core operations & types
 include("promotion.jl")

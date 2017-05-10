@@ -373,7 +373,7 @@ function gen_call_with_extracted_types(fcn, ex0)
     ex = expand(ex0)
     if isa(ex0, Expr) && ex0.head == :macrocall # Make @edit @time 1+2 edit the macro by using the types of the *expressions*
         is_macro = true
-        exret = Expr(:call, fcn, esc(ex0.args[1]), Tuple{#=__source__=#LineNumberNode, Any[ Core.Typeof(a) for a in ex0.args[3:end] ]...})
+        exret = Expr(:call, fcn, esc(ex0.args[1]), Tuple{#=__source__=#LineNumberNode, #=__module__=#Module, Any[ Core.Typeof(a) for a in ex0.args[3:end] ]...})
     elseif !isa(ex, Expr)
         exret = Expr(:call, :error, "expression is not a function call or symbol")
     elseif ex.head == :call
@@ -676,13 +676,13 @@ end
 
 
 """
-    whos(io::IO=STDOUT, m::Module=current_module(), pattern::Regex=r"")
+    whos(io::IO=STDOUT, m::Module=Main, pattern::Regex=r"")
 
 Print information about exported global variables in a module, optionally restricted to those matching `pattern`.
 
 The memory consumption estimate is an approximate lower bound on the size of the internal structure of the object.
 """
-function whos(io::IO=STDOUT, m::Module=current_module(), pattern::Regex=r"")
+function whos(io::IO=STDOUT, m::Module=Main, pattern::Regex=r"")
     maxline = displaysize(io)[2]
     line = zeros(UInt8, maxline)
     head = PipeBuffer(maxline + 1)
@@ -726,4 +726,4 @@ function whos(io::IO=STDOUT, m::Module=current_module(), pattern::Regex=r"")
     end
 end
 whos(m::Module, pat::Regex=r"") = whos(STDOUT, m, pat)
-whos(pat::Regex) = whos(STDOUT, current_module(), pat)
+whos(pat::Regex) = whos(STDOUT, Main, pat)

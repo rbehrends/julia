@@ -37,25 +37,24 @@ function mdexpr(s, flavor = :julia)
     esc(toexpr(md))
 end
 
-function docexpr(s, flavor = :julia)
-    quote
-        let md = $(mdexpr(s, flavor))
-            md.meta[:path] = @__FILE__
-            md.meta[:module] = current_module()
-            md
-        end
-    end
+function docexpr(source::LineNumberNode, mod::Module, s, flavor = :julia)
+    :($doc_str($(mdexpr(s, flavor)), $(QuoteNode(source)), $mod))
 end
 
 macro md_str(s, t...)
     mdexpr(s, t...)
 end
 
-doc_str(md, file, mod) = (md.meta[:path] = file; md.meta[:module] = mod; md)
-doc_str(md::AbstractString, file, mod) = doc_str(parse(md), file, mod)
+function doc_str(md, source::LineNumberNode, mod::Module)
+    md.meta[:path] = source.file
+    md.meta[:path] = isa(source.file, Symbol) ? String(source.file) : ""
+    md.meta[:module] = mod
+    md
+end
+doc_str(md::AbstractString, source::LineNumberNode, mod::Module) = doc_str(parse(md), source, mod)
 
 macro doc_str(s::AbstractString, t...)
-    :($(doc_str)($(mdexpr(s, t...)), $(Base).@__FILE__, $(current_module)()))
+    docexpr(__source__, __module__, s, t...)
 end
 
 function Base.display(d::Base.REPL.REPLDisplay, md::Vector{MD})

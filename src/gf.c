@@ -2107,12 +2107,12 @@ jl_function_t *jl_new_generic_function_with_supertype(jl_sym_t *name, jl_module_
     }
     jl_sym_t *tname = jl_symbol(prefixed);
     free(prefixed);
-    jl_datatype_t *ftype = (jl_datatype_t*)jl_new_datatype(tname, st, jl_emptysvec, jl_emptysvec, jl_emptysvec, 0, 0, 0);
+    jl_datatype_t *ftype = (jl_datatype_t*)jl_new_datatype(
+            tname, module, st, jl_emptysvec, jl_emptysvec, jl_emptysvec, 0, 0, 0);
     assert(jl_is_datatype(ftype));
     JL_GC_PUSH1(&ftype);
-    ftype->name->mt->name = name; jl_gc_wb(ftype->name->mt, name);
-    ftype->name->module = module; jl_gc_wb(ftype->name, module);
-    ftype->name->mt->module = module; jl_gc_wb(ftype->name->mt, module);
+    ftype->name->mt->name = name;
+    jl_gc_wb(ftype->name->mt, name);
     jl_set_const(module, tname, (jl_value_t*)ftype);
     jl_value_t *f = jl_new_struct(ftype);
     ftype->instance = f; jl_gc_wb(ftype, f);

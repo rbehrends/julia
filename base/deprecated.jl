@@ -97,14 +97,13 @@ function firstcaller(bt::Array{Ptr{Void},1}, funcsyms)
     return lkup
 end
 
-deprecate(s::Symbol) = deprecate(current_module(), s)
 deprecate(m::Module, s::Symbol) = ccall(:jl_deprecate_binding, Void, (Any, Any), m, s)
 
 macro deprecate_binding(old, new, export_old=true)
-    Expr(:toplevel,
+    return Expr(:toplevel,
          export_old ? Expr(:export, esc(old)) : nothing,
          Expr(:const, Expr(:(=), esc(old), esc(new))),
-         Expr(:call, :deprecate, Expr(:quote, old)))
+         Expr(:call, :deprecate, __module__, Expr(:quote, old)))
 end
 
 # BEGIN 0.6-alpha deprecations (delete when 0.6 is released)
@@ -1334,6 +1333,11 @@ next(p::Union{Process, ProcessChain}, i::Int) = (getindex(p, i), i + 1)
     depwarn("open(cmd) now returns only a Process<:IO object", :getindex)
     return i == 1 ? getfield(p, p.openstream) : p
 end
+
+binding_module(s::Symbol) = binding_module(current_module(), s)
+expand(x::ANY) = expand(x, current_module())
+macroexpand(x::ANY) = macroexpand(x, current_module())
+isconst(s::Symbol) = isconst(s, current_module())
 
 # END 0.7 deprecations
 

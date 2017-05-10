@@ -481,24 +481,27 @@ end
 
 # Issue #16359. Error message for invalid doc syntax.
 
-for each in [ # valid syntax
-        :(f()),
-        :(f(x)),
-        :(f(x::Int)),
-        :(f(x...)),
-        :(f(x = 1)),
-        :(f(; x = 1))
-    ]
-    @test Meta.isexpr(Docs.docm("...", each), :block)
-end
-for each in [ # invalid syntax
-        :(f("...")),
-        :(f(1, 2)),
-        :(f(() -> ()))
-    ]
-    result = Docs.docm("...", each)
-    @test Meta.isexpr(result, :call)
-    @test result.args[1] === error
+let __source__ = LineNumberNode(0),
+    __module__ = @__MODULE__
+    for each in [ # valid syntax
+            :(f()),
+            :(f(x)),
+            :(f(x::Int)),
+            :(f(x...)),
+            :(f(x = 1)),
+            :(f(; x = 1))
+        ]
+        @test Meta.isexpr(Docs.docm(__source__, __module__, "...", each), :block)
+    end
+    for each in [ # invalid syntax
+            :(f("...")),
+            :(f(1, 2)),
+            :(f(() -> ()))
+        ]
+        result = Docs.docm(__source__, __module__, "...", each)
+        @test Meta.isexpr(result, :call)
+        @test result.args[1] === error
+    end
 end
 
 # Issue #15424. Non-markdown docstrings.
@@ -947,8 +950,8 @@ dynamic_test.x = "test 2"
 @test @doc(dynamic_test) == "test 2 Union{}"
 @test @doc(dynamic_test(::String)) == "test 2 Tuple{String}"
 
-@test Docs._repl(:(dynamic_test(1.0))) == Expr(:macrocall, Symbol("@doc"), LineNumberNode(204, doc_util_path), esc(:(dynamic_test(::typeof(1.0)))))
-@test Docs._repl(:(dynamic_test(::String))) == Expr(:macrocall, Symbol("@doc"), LineNumberNode(204, doc_util_path), esc(:(dynamic_test(::String))))
+@test Docs._repl(:(dynamic_test(1.0))) == Expr(:macrocall, Symbol("@doc"), LineNumberNode(206, doc_util_path), esc(:(dynamic_test(::typeof(1.0)))))
+@test Docs._repl(:(dynamic_test(::String))) == Expr(:macrocall, Symbol("@doc"), LineNumberNode(206, doc_util_path), esc(:(dynamic_test(::String))))
 
 
 # Equality testing

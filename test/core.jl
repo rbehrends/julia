@@ -1396,7 +1396,8 @@ let
     g4505{X}(::X) = 0
     @test g4505(0) == 0
 end
-@test !isdefined(:g4505)
+@test !@isdefined g4505
+@test !isdefined(@__MODULE__, :g4505)
 
 # issue #4681
 # ccall should error if convert() returns something of the wrong type
@@ -1812,7 +1813,7 @@ macro m20524(ex)
 end
 @m20524 ((a,(b20524,c)) = (8,(1,5)); (a,b20524,c))
 @test f20524() === (8,1,5)
-@test !isdefined(:b20524)  # should not assign to a global
+@test !@isdefined b20524 # should not assign to a global
 
 # issue #6387
 primitive type Date6387{C} 64 end
@@ -3730,7 +3731,7 @@ let
     k15283 = j15283+=1
 end
 @test j15283 == 1
-@test !isdefined(:k15283)
+@test !@isdefined k15283
 
 # issue #15264
 module Test15264

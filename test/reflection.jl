@@ -151,11 +151,11 @@ i10165{T,n}(::Type{AbstractArray{T,n}}) = 1
 
 const a_const = 1
 not_const = 1
-@test isconst(:a_const) == true
+@test isconst(@__MODULE__, :a_const) == true
 @test isconst(Base, :pi) == true
-@test isconst(:pi) == true
-@test isconst(:not_const) == false
-@test isconst(:is_not_defined) == false
+@test isconst(@__MODULE__, :pi) == true
+@test isconst(@__MODULE__, :not_const) == false
+@test isconst(@__MODULE__, :is_not_defined) == false
 
 @test isimmutable(1) == true
 @test isimmutable([]) == false
@@ -366,10 +366,10 @@ let
     using .MacroTest
     a = 1
     m = getfield(current_module(), Symbol("@macrotest"))
-    @test which(m, Tuple{LineNumberNode, Int, Symbol}) == @which @macrotest 1 a
-    @test which(m, Tuple{LineNumberNode, Int, Int}) == @which @macrotest 1 1
+    @test which(m, Tuple{LineNumberNode, Module, Int, Symbol}) == @which @macrotest 1 a
+    @test which(m, Tuple{LineNumberNode, Module, Int, Int}) == @which @macrotest 1 1
 
-    @test first(methods(m, Tuple{LineNumberNode, Int, Int})) == @which MacroTest.@macrotest 1 1
+    @test first(methods(m, Tuple{LineNumberNode, Module, Int, Int})) == @which MacroTest.@macrotest 1 1
     @test functionloc(@which @macrotest 1 1) == @functionloc @macrotest 1 1
 end
 

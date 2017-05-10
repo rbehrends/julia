@@ -776,7 +776,7 @@ let nometh = expand(:(A15838.@f(1, 2))), __source__ = LineNumberNode(@__LINE__, 
     @test length(nometh.args) == 1
     e = nometh.args[1]::MethodError
     @test e.f === getfield(A15838, Symbol("@f"))
-    @test e.args === (__source__, 1, 2)
+    @test e.args === (__source__, @__MODULE__, 1, 2)
 end
 
 # issue 10046
@@ -1006,8 +1006,8 @@ end
 let
     global const (c8925, d8925) = (3, 4)
 end
-@test c8925 == 3 && isconst(:c8925)
-@test d8925 == 4 && isconst(:d8925)
+@test c8925 == 3 && isconst(@__MODULE__, :c8925)
+@test d8925 == 4 && isconst(@__MODULE__, :d8925)
 
 # issue #18754: parse ccall as a regular function
 @test parse("ccall([1], 2)[3]") == Expr(:ref, Expr(:call, :ccall, Expr(:vect, 1), 2), 3)

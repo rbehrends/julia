@@ -1026,6 +1026,7 @@ export
     which,
     whos,
     workspace,
+    @isdefined,
 
 # loading source files
     __precompile__,
@@ -1248,6 +1249,7 @@ export
     @__FILE__,
     @__DIR__,
     @__LINE__,
+    @__MODULE__,
     @int128_str,
     @uint128_str,
     @big_str,

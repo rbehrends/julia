@@ -34,8 +34,20 @@ module_parent(m::Module) = ccall(:jl_module_parent, Ref{Module}, (Any,), m)
 
 Get the *dynamically* current `Module`, which is the `Module` code is currently being read
 from. In general, this is not the same as the module containing the call to this function.
+
+DEPRECATED: use @__MODULE__ instead
 """
 current_module() = ccall(:jl_get_current_module, Ref{Module}, ())
+
+"""
+    @__MODULE__ -> Module
+
+Get the `Module` of the toplevel eval,
+which is the `Module` code is currently being read from.
+"""
+macro __MODULE__()
+    return __module__
+end
 
 """
     fullname(m::Module)
@@ -90,7 +102,6 @@ isexported(m::Module, s::Symbol) = ccall(:jl_module_exports_p, Cint, (Any, Any),
 isdeprecated(m::Module, s::Symbol) = ccall(:jl_is_binding_deprecated, Cint, (Any, Any), m, s) != 0
 isbindingresolved(m::Module, var::Symbol) = ccall(:jl_binding_resolved_p, Cint, (Any, Any), m, var) != 0
 
-binding_module(s::Symbol) = binding_module(current_module(), s)
 function binding_module(m::Module, s::Symbol)
     p = ccall(:jl_get_module_of_binding, Ptr{Void}, (Any, Any), m, s)
     p == C_NULL && return m
@@ -159,16 +170,22 @@ Determine the module containing the definition of a `DataType`.
 """
 datatype_module(t::DataType) = t.name.module
 
-isconst(s::Symbol) = ccall(:jl_is_const, Cint, (Ptr{Void}, Any), C_NULL, s) != 0
-
 """
-    isconst([m::Module], s::Symbol) -> Bool
+    isconst(m::Module, s::Symbol) -> Bool
 
-Determine whether a global is declared `const` in a given `Module`. The default `Module`
-argument is [`current_module()`](@ref).
+Determine whether a global is declared `const` in a given `Module`.
 """
 isconst(m::Module, s::Symbol) =
     ccall(:jl_is_const, Cint, (Any, Any), m, s) != 0
+
+"""
+    @isdefined s -> Bool
+
+Get whether symbol `s` is defined in the current scope.
+"""
+macro isdefined(s::Symbol)
+    return :(isdefined($__module__, $(QuoteNode(s))))
+end
 
 # return an integer such that object_id(x)==object_id(y) if x===y
 object_id(x::ANY) = ccall(:jl_object_id, UInt, (Any,), x)

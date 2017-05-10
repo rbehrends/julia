@@ -496,8 +496,8 @@ Like `include`, except reads code from the given string rather than from a file.
 is no file path involved, no path processing or fetching from node 1 is done.
 """
 include_string(txt::String, fname::String) =
-    ccall(:jl_load_file_string, Any, (Ptr{UInt8},Csize_t,Cstring),
-          txt, sizeof(txt), fname)
+    ccall(:jl_load_file_string, Any, (Ptr{UInt8}, Csize_t, Cstring, Any),
+          txt, sizeof(txt), fname, current_module())
 
 include_string(txt::AbstractString, fname::AbstractString="string") =
     include_string(String(txt), String(fname))

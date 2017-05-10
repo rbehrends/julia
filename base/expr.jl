@@ -46,19 +46,21 @@ copy_exprargs(x::Array{Any,1}) = Any[copy_exprs(a) for a in x]
 ==(x::QuoteNode, y::QuoteNode) = isequal(x.value, y.value)
 
 """
-    expand(x)
+    expand(x, m)
 
-Takes the expression `x` and returns an equivalent expression in lowered form.
+Takes the expression `x` and returns an equivalent expression in lowered form
+for executing in module `m`.
 See also [`code_lowered`](@ref).
 """
-expand(x::ANY) = ccall(:jl_expand, Any, (Any,), x)
+expand(x::ANY, m::Module) = ccall(:jl_expand, Any, (Any, Any), x, m)
 
 """
-    macroexpand(x)
+    macroexpand(x, m)
 
-Takes the expression `x` and returns an equivalent expression with all macros removed (expanded).
+Takes the expression `x` and returns an equivalent expression with all macros removed (expanded)
+for executing in module `m`.
 """
-macroexpand(x::ANY) = ccall(:jl_macroexpand, Any, (Any,), x)
+macroexpand(x::ANY, m::Module) = ccall(:jl_macroexpand, Any, (Any, Any), x, m)
 
 """
     @macroexpand
@@ -93,8 +95,7 @@ the code was finally called (REPL in the example).
 Note that when calling `macroexpand` or `@macroexpand` directly from the REPL, both of these contexts coincide, hence there is no difference.
 """
 macro macroexpand(code)
-    code_expanded = macroexpand(code)
-    QuoteNode(code_expanded)
+    return :(macroexpand($(QuoteNode(code)), $__module__))
 end
 
 ## misc syntax ##
@@ -288,4 +289,14 @@ function remove_linenums!(ex::Expr)
         remove_linenums!(subex)
     end
     return ex
+end
+
+macro generated(f)
+    isa(f, Expr) || error("invalid syntax; @generated must be used with a function definition")
+    if f.head === :function || (@isdefined(length) && f.head === :(=) && length(f.args) == 2 && f.args[1].head == :call)
+        f.head = :stagedfunction
+        return Expr(:escape, f)
+    else
+        error("invalid syntax; @generated must be used with a function definition")
+    end
 end

@@ -792,7 +792,7 @@ end
 ```
 """
 macro kwdef(expr)
-    expr = macroexpand(expr) # to expand @static
+    expr = macroexpand(expr, __module__) # to expand @static
     T = expr.args[2]
     params_ex = Expr(:parameters)
     call_ex = Expr(:call, T)

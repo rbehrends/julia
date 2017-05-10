@@ -76,6 +76,7 @@ Base.finalize
 Base.copy
 Base.deepcopy
 Core.isdefined
+Base.@isdefined
 Base.convert
 Base.promote
 Base.oftype

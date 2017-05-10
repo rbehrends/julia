@@ -764,7 +764,7 @@ function deserialize(s::AbstractSerializer, ::Type{Method})
         meth = meth::Method
         makenew = false
     else
-        meth = ccall(:jl_new_method_uninit, Ref{Method}, ())
+        meth = ccall(:jl_new_method_uninit, Ref{Method}, (Any,), Main)
         makenew = true
     end
     deserialize_cycle(s, meth)
@@ -919,8 +919,8 @@ function deserialize_typename(s::AbstractSerializer, number)
         # TODO: there's an unhanded cycle in the dependency graph at this point:
         # while deserializing super and/or types, we may have encountered
         # tn.wrapper and throw UndefRefException before we get to this point
-        ndt = ccall(:jl_new_datatype, Any, (Any, Any, Any, Any, Any, Cint, Cint, Cint),
-                    tn, super, parameters, names, types,
+        ndt = ccall(:jl_new_datatype, Any, (Any, Any, Any, Any, Any, Any, Cint, Cint, Cint),
+                    tn, tn.module, super, parameters, names, types,
                     abstr, mutabl, ninitialized)
         tn.wrapper = ndt.name.wrapper
         ccall(:jl_set_const, Void, (Any, Any, Any), tn.module, tn.name, tn.wrapper)
