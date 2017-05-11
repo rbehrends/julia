@@ -730,6 +730,7 @@ end
 let didthrow =
     try
         include_string(
+            @__MODULE__,
             """
             module TestInitError
                 __init__() = error()
@@ -1695,9 +1696,15 @@ test5536(a::Union{Real, AbstractArray}) = "Non-splatting"
 @test test5536(5) == "Non-splatting"
 
 # multiline comments (#6139 and others raised in #6128) and embedded NUL chars (#10994)
-@test 3 == include_string("1 + 2") == include_string("1 + #==# 2") == include_string("1 + #===# 2") == include_string("1 + #= #= blah =# =# 2") == include_string("1 + #= #= #= nested =# =# =# 2") == include_string("1 + #= \0 =# 2")
-@test_throws LoadError include_string("#=")
-@test_throws LoadError include_string("#= #= #= =# =# =")
+@test 3 ==
+    include_string(@__MODULE__, "1 + 2") ==
+    include_string(@__MODULE__, "1 + #==# 2") ==
+    include_string(@__MODULE__, "1 + #===# 2") ==
+    include_string(@__MODULE__, "1 + #= #= blah =# =# 2") ==
+    include_string(@__MODULE__, "1 + #= #= #= nested =# =# =# 2") ==
+    include_string(@__MODULE__, "1 + #= \0 =# 2")
+@test_throws LoadError include_string(@__MODULE__, "#=")
+@test_throws LoadError include_string(@__MODULE__, "#= #= #= =# =# =")
 
 # issue #6142
 import Base: +

@@ -1390,7 +1390,7 @@ JL_DLLEXPORT const char *jl_lookup_soname(const char *pfx, size_t n);
 // compiler
 JL_DLLEXPORT jl_value_t *jl_toplevel_eval(jl_module_t *m, jl_value_t *v);
 JL_DLLEXPORT jl_value_t *jl_toplevel_eval_in(jl_module_t *m, jl_value_t *ex);
-JL_DLLEXPORT jl_value_t *jl_load(const char *fname, jl_module_t *module);
+JL_DLLEXPORT jl_value_t *jl_load(jl_module_t *module, const char *fname);
 JL_DLLEXPORT jl_module_t *jl_base_relative_to(jl_module_t *m);
 
 // tracing

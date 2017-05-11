@@ -32,7 +32,7 @@ function choosetests(choices = [])
         "replutil", "sets", "test", "goto", "llvmcall", "llvmcall2", "grisu",
         "nullable", "meta", "stacktraces", "profile", "libgit2", "docs",
         "markdown", "base64", "serialize", "misc", "threads",
-        "enums", "cmdlineargs", "i18n", "workspace", "libdl", "int",
+        "enums", "cmdlineargs", "i18n", "libdl", "int",
         "checked", "intset", "floatfuncs", "compile", "distributed", "inline",
         "boundscheck", "error", "ambiguous", "cartesian", "asmvariant", "osutils",
         "channels", "iostream"

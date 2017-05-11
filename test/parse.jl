@@ -642,7 +642,7 @@ end
 
 # issue #16720
 let err = try
-    include_string("module A
+    include_string(@__MODULE__, "module A
 
         function broken()
 

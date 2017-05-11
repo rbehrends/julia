@@ -230,7 +230,7 @@ String(s::String) = s  # no constructor yet
 # This should always be inlined
 getptls() = ccall(:jl_get_ptls_states, Ptr{Void}, ())
 
-include(fname::String, m::Module) = ccall(:jl_load_, Any, (Any, Any), fname, m)
+include(m::Module, fname::String) = ccall(:jl_load_, Any, (Any, Any), m, fname)
 
 eval(e::ANY) = eval(Main, e)
 eval(m::Module, e::ANY) = ccall(:jl_toplevel_eval_in, Any, (Any, Any), m, e)

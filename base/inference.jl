@@ -2364,7 +2364,7 @@ end
 
 # temporarily accumulate our no method errors to later add as backedges in the callee method table
 function add_mt_backedge(mt::MethodTable, typ::ANY, caller::InferenceState)
-    isa(caller.linfo, Method) || return # don't add backedges to toplevel exprs
+    isa(caller.linfo.def, Method) || return # don't add backedges to toplevel exprs
     if caller.stmt_edges[caller.currpc] === ()
         caller.stmt_edges[caller.currpc] = []
     end

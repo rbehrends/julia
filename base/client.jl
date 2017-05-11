@@ -277,7 +277,7 @@ function process_options(opts::JLOptions)
         # load file immediately on all processors
         if opts.load != C_NULL
             @sync for p in procs()
-                @async remotecall_fetch(include, p, unsafe_string(opts.load))
+                @async remotecall_fetch(include, p, Main, unsafe_string(opts.load))
             end
         end
         # eval expression
@@ -361,12 +361,13 @@ function __atreplinit(repl)
         end
     end
 end
-_atreplinit(repl) = @eval Main $__atreplinit($repl)
+_atreplinit(repl) = invokelatest(__atreplinit, repl)
 
 function _start()
     empty!(ARGS)
     append!(ARGS, Core.ARGS)
     opts = JLOptions()
+    @eval Main include(x) = $include(Main, x)
     try
         (quiet,repl,startup,color_set,history_file) = process_options(opts)
 

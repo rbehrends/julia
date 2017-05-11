@@ -28,7 +28,7 @@ if !@isdefined(testenv_defined)
 
     addprocs_with_testenv(X; kwargs...) = addprocs(X; exename=test_exename, exeflags=test_exeflags, kwargs...)
 
-    const curmod = current_module()
+    const curmod = @__MODULE__
     const curmod_name = fullname(curmod)
     const curmod_str = curmod === Main ? "Main" : join(curmod_name, ".")
     const curmod_prefix = "$(["$m." for m in curmod_name]...)"

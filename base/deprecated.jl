@@ -1338,6 +1338,7 @@ binding_module(s::Symbol) = binding_module(current_module(), s)
 expand(x::ANY) = expand(x, current_module())
 macroexpand(x::ANY) = macroexpand(x, current_module())
 isconst(s::Symbol) = isconst(s, current_module())
+include_string(txt::AbstractString, fname::AbstractString) = include_string(current_module(), txt, fname)
 
 # END 0.7 deprecations
 

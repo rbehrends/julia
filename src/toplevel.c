@@ -603,7 +603,7 @@ JL_DLLEXPORT jl_value_t *jl_toplevel_eval(jl_module_t *m, jl_value_t *v)
     return jl_toplevel_eval_flex(m, v, 1, 0);
 }
 
-JL_DLLEXPORT jl_value_t *jl_load(const char *fname, jl_module_t *module)
+JL_DLLEXPORT jl_value_t *jl_load(jl_module_t *module, const char *fname)
 {
     if (module->istopmod) {
         jl_printf(JL_STDOUT, "%s\r\n", fname);
@@ -619,10 +619,10 @@ JL_DLLEXPORT jl_value_t *jl_load(const char *fname, jl_module_t *module)
 }
 
 // load from filename given as a String object
-JL_DLLEXPORT jl_value_t *jl_load_(jl_value_t *str, jl_module_t *module)
+JL_DLLEXPORT jl_value_t *jl_load_(jl_module_t *module, jl_value_t *str)
 {
     // assume String has a hidden '\0' at the end
-    return jl_load((const char*)jl_string_data(str), module);
+    return jl_load(module, (const char*)jl_string_data(str));
 }
 
 #ifdef __cplusplus

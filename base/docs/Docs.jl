@@ -225,12 +225,11 @@ end
 # =======================
 
 """
-    Docs.doc!(binding, str, sig)
+    Docs.doc!(__module__, binding, str, sig)
 
-Adds a new docstring `str` to the docsystem for `binding` and signature `sig`.
+Adds a new docstring `str` to the docsystem of `__module__` for `binding` and signature `sig`.
 """
-function doc!(b::Binding, str::DocStr, sig::ANY = Union{})
-    __module__ = b.mod
+function doc!(__module__::Module, b::Binding, str::DocStr, sig::ANY = Union{})
     initmeta(__module__)
     m = get!(meta(), b, MultiDoc())
     if haskey(m.docs, sig)
@@ -527,7 +526,7 @@ function objectdoc(__source__, __module__, str, def, expr, sig = :(Union{}))
     docstr  = esc(docexpr(__source__, __module__, lazy_iterpolate(str), metadata(__source__, __module__, expr)))
     quote
         $(esc(def))
-        $(doc!)($binding, $docstr, $(esc(sig)))
+        $(doc!)($__module__, $binding, $docstr, $(esc(sig)))
     end
 end
 
@@ -543,7 +542,7 @@ validcall(x) = isa(x, Symbol) || isexpr(x, [:(::), :..., :kw, :parameters])
 
 function moduledoc(__source__, __module__, meta, def, def′)
     name  = namify(def′)
-    docex = Expr(:call, doc!, bindingexpr(name),
+    docex = Expr(:call, doc!, __module__, bindingexpr(name),
         docexpr(__source__, __module__, lazy_iterpolate(meta), metadata(__source__, __module__, name))
     )
     if def === nothing

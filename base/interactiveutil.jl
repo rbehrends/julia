@@ -351,7 +351,6 @@ code_warntype(f, t::ANY) = code_warntype(STDOUT, f, t)
 
 typesof(args...) = Tuple{Any[ Core.Typeof(a) for a in args ]...}
 
-gen_call_with_extracted_types(fcn, ex0::Symbol) = Expr(:call, fcn, Meta.quot(ex0))
 function gen_call_with_extracted_types(fcn, ex0)
     if isa(ex0, Expr)
         if any(a->(Meta.isexpr(a, :kw) || Meta.isexpr(a, :parameters)), ex0.args)
@@ -410,15 +409,19 @@ for fname in [:which, :less, :edit, :functionloc, :code_warntype,
               :code_llvm, :code_llvm_raw, :code_native]
     @eval begin
         macro ($fname)(ex0)
-            gen_call_with_extracted_types($(Expr(:quote,fname)), ex0)
+            gen_call_with_extracted_types($(Expr(:quote, fname)), ex0)
         end
     end
+end
+macro which(ex0::Symbol)
+    ex0 = QuoteNode(ex0)
+    return :(which_module($__module__, $ex0))
 end
 
 for fname in [:code_typed, :code_lowered]
     @eval begin
         macro ($fname)(ex0)
-            thecall = gen_call_with_extracted_types($(Expr(:quote,fname)), ex0)
+            thecall = gen_call_with_extracted_types($(Expr(:quote, fname)), ex0)
             quote
                 results = $thecall
                 length(results) == 1 ? results[1] : results
@@ -634,15 +637,15 @@ accessed using a statement such as `using LastMain.Package`.
 This function should only be used interactively.
 """
 function workspace()
-    last = Core.Main
-    b = last.Base
-    ccall(:jl_new_main_module, Any, ())
-    m = Core.Main
+    last = Core.Main # ensure to reference the current Main module
+    b = Base # this module
+    ccall(:jl_new_main_module, Any, ()) # make Core.Main a new baremodule
+    m = Core.Main # now grab a handle to the new Main module
     ccall(:jl_add_standard_imports, Void, (Any,), m)
-    eval(m,
-         Expr(:toplevel,
-              :(const Base = $(Expr(:quote, b))),
-              :(const LastMain = $(Expr(:quote, last)))))
+    eval(m, Expr(:toplevel,
+        :(const Base = $b),
+        :(const LastMain = $last),
+        :(include(x) = $include($m, x))))
     empty!(package_locks)
     nothing
 end

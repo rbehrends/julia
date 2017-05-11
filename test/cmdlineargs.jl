@@ -406,9 +406,9 @@ for precomp in ("yes", "no")
     @test contains(bt, "include_from_node1")
     if is_windows() && Sys.WORD_SIZE == 32 && precomp == "yes"
         # fixme, issue #17251
-        @test_broken contains(bt, "include_from_node1(::String) at $(joinpath(".","loading.jl"))")
+        @test_broken contains(bt, "include_from_node1(::Module, ::String) at $(joinpath(".", "loading.jl"))")
     else
-        @test contains(bt, "include_from_node1(::String) at $(joinpath(".","loading.jl"))")
+        @test contains(bt, "include_from_node1(::Module, ::String) at $(joinpath(".", "loading.jl"))")
     end
     lno = match(r"at \.[\/\\]loading\.jl:(\d+)", bt)
     @test length(lno.captures) == 1

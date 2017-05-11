@@ -104,6 +104,7 @@ let src = expand(quote let x = 1 end end).args[1]::CodeInfo,
 
     li.inferred = src
     li.specTypes = Tuple{}
+    li.def = @__MODULE__
     sf = StackFrame(:a, :b, 3, li, false, false, 0)
     repr = string(sf)
     @test repr == "Toplevel MethodInstance thunk at b:3"
