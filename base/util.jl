@@ -431,7 +431,8 @@ const log_error_to = Dict{Tuple{Union{Module,Void},Union{Symbol,Void}},IO}()
 
 function _redirect(io::IO, log_to::Dict, sf::StackTraces.StackFrame)
     isnull(sf.linfo) && return io
-    mod = get(sf.linfo).def.module
+    mod = get(sf.linfo).def
+    isa(mod, Method) && (mod = mod.module)
     fun = sf.func
     if haskey(log_to, (mod,fun))
         return log_to[(mod,fun)]
@@ -456,7 +457,9 @@ function _redirect(io::IO, log_to::Dict, fun::Symbol)
             isnull(frame.linfo) && continue
             sf = frame
             break_next_frame && (@goto skip)
-            get(frame.linfo).def.module == Base || continue
+            mod = get(frame.linfo).def
+            isa(mod, Method) && (mod = mod.module)
+            mod === Base || continue
             sff = string(frame.func)
             if frame.func == fun || startswith(sff, clos) || startswith(sff, kw)
                 break_next_frame = true

@@ -1966,13 +1966,13 @@ void jl_init_types(void)
         jl_new_datatype(jl_symbol("MethodInstance"), core,
                         jl_any_type, jl_emptysvec,
                         jl_svec(16,
+                                jl_symbol("def"),
                                 jl_symbol("specTypes"),
                                 jl_symbol("rettype"),
                                 jl_symbol("sparam_vals"),
                                 jl_symbol("backedges"),
                                 jl_symbol("inferred"),
                                 jl_symbol("inferred_const"),
-                                jl_symbol("def"),
                                 jl_symbol("min_world"),
                                 jl_symbol("max_world"),
                                 jl_symbol("inInference"),
@@ -1982,13 +1982,13 @@ void jl_init_types(void)
                                 jl_symbol("unspecialized_ducttape"),
                                 jl_symbol(""), jl_symbol("")),
                         jl_svec(16,
+                                jl_new_struct(jl_uniontype_type, jl_method_type, jl_module_type),
                                 jl_any_type,
                                 jl_any_type,
                                 jl_simplevector_type,
                                 jl_any_type,
                                 jl_any_type,
                                 jl_any_type,
-                                jl_method_type,
                                 jl_long_type,
                                 jl_long_type,
                                 jl_bool_type,
@@ -1997,7 +1997,7 @@ void jl_init_types(void)
                                 jl_any_type, // void*
                                 jl_any_type, // void*
                                 jl_any_type, jl_any_type), // void*, void*
-                        0, 1, 3);
+                        0, 1, 4);
 
     // all kinds of types share a method table
     jl_unionall_type->name->mt = jl_uniontype_type->name->mt = jl_datatype_type->name->mt =

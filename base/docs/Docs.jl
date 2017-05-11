@@ -74,7 +74,7 @@ const META    = gensym(:meta)
 
 meta(m::Module = current_module()) = isdefined(m, META) ? getfield(m, META) : ObjectIdDict()
 
-function initmeta(m::Module = current_module())
+function initmeta(m::Module)
     if !isdefined(m, META)
         eval(m, :(const $META = $(ObjectIdDict())))
         push!(modules, m)
@@ -230,13 +230,13 @@ end
 Adds a new docstring `str` to the docsystem for `binding` and signature `sig`.
 """
 function doc!(b::Binding, str::DocStr, sig::ANY = Union{})
-    initmeta()
+    __module__ = b.mod
+    initmeta(__module__)
     m = get!(meta(), b, MultiDoc())
     if haskey(m.docs, sig)
         # We allow for docstrings to be updated, but print a warning since it is possible
         # that over-writing a docstring *may* have been accidental.
-        s = "replacing docs for '$b :: $sig' in module '$(current_module())'."
-        isdefined(Base, :STDERR) ? warn(s) : ccall(:jl_, Void, (Any,), "WARNING: $s")
+        warn("replacing docs for '$b :: $sig' in module '$(__module__)'.")
     else
         # The ordering of docstrings for each Binding is defined by the order in which they
         # are initially added. Replacing a specific docstring does not change it's ordering.
@@ -655,7 +655,7 @@ function docm(source::LineNumberNode, mod::Module, meta, ex, define = true)
     # Don't try to redefine expressions. This is only needed for `Base` img gen since
     # otherwise calling `loaddocs` would redefine all documented functions and types.
     def = define ? x : nothing
-    if isa(x, GlobalRef) && (x::GlobalRef).mod == current_module()
+    if isa(x, GlobalRef) && (x::GlobalRef).mod == mod
         x = (x::GlobalRef).name
     end
 

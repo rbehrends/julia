@@ -859,9 +859,9 @@ end
 """
     which(symbol)
 
-Return the module in which the binding for the variable referenced by `symbol` was created.
+Return the module in which the binding for the variable referenced by Main.`symbol` was created.
 """
-which(s::Symbol) = which_module(current_module(), s)
+which(s::Symbol) = which_module(Main, s)
 # TODO: making this a method of which() causes a strange error
 function which_module(m::Module, s::Symbol)
     if !isdefined(m, s)

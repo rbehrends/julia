@@ -307,13 +307,14 @@ function sourceinfo_slotnames(src::CodeInfo)
 end
 
 function show(io::IO, l::Core.MethodInstance)
-    if isdefined(l, :def)
-        if l.def.isstaged && l === l.def.generator
+    def = l.def
+    if isa(def, Method)
+        if def.isstaged && l === def.generator
             print(io, "MethodInstance generator for ")
-            show(io, l.def)
+            show(io, def)
         else
             print(io, "MethodInstance for ")
-            show_tuple_as_call(io, l.def.name, l.specTypes)
+            show_tuple_as_call(io, def.name, l.specTypes)
         end
     else
         print(io, "Toplevel MethodInstance thunk")

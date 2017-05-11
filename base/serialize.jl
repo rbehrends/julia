@@ -404,7 +404,7 @@ end
 
 function serialize(s::AbstractSerializer, linfo::Core.MethodInstance)
     serialize_cycle(s, linfo) && return
-    isdefined(linfo, :def) && error("can only serialize toplevel MethodInstance objects")
+    isa(linfo.def, Module) || error("can only serialize toplevel MethodInstance objects")
     writetag(s.io, METHODINSTANCE_TAG)
     serialize(s, linfo.inferred)
     if isdefined(linfo, :inferred_const)
@@ -415,6 +415,8 @@ function serialize(s::AbstractSerializer, linfo::Core.MethodInstance)
     serialize(s, linfo.sparam_vals)
     serialize(s, linfo.rettype)
     serialize(s, linfo.specTypes)
+    serialize(s, linfo.def)
+    nothing
 end
 
 function serialize(s::AbstractSerializer, t::Task)
@@ -797,6 +799,7 @@ function deserialize(s::AbstractSerializer, ::Type{Method})
             linfo = ccall(:jl_new_method_instance_uninit, Ref{Core.MethodInstance}, ())
             linfo.specTypes = Tuple
             linfo.inferred = template
+            linfo.def = meth
             meth.generator = linfo
         end
         ftype = ccall(:jl_first_argument_datatype, Any, (Any,), sig)::DataType
@@ -819,6 +822,7 @@ function deserialize(s::AbstractSerializer, ::Type{Core.MethodInstance})
     linfo.sparam_vals = deserialize(s)::SimpleVector
     linfo.rettype = deserialize(s)
     linfo.specTypes = deserialize(s)
+    linfo.def = deserialize(s)::Module
     return linfo
 end
 

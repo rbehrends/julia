@@ -267,13 +267,17 @@ typedef struct _jl_method_t {
 // This type caches the data for a specType signature specialization of a Method
 typedef struct _jl_method_instance_t {
     JL_DATA_TYPE
+    union {
+        jl_value_t *value; // generic accessor
+        struct _jl_module_t *module; // this is a toplevel thunk
+        jl_method_t *method; // method this is specialized from
+    } def; // context for this lambda definition
     jl_value_t *specTypes;  // argument types this was specialized for
     jl_value_t *rettype; // return type for fptr
-    jl_svec_t *sparam_vals; // static parameter values, indexed by def->sparam_syms
+    jl_svec_t *sparam_vals; // static parameter values, indexed by def.method->sparam_syms
     jl_array_t *backedges;
     jl_value_t *inferred;  // inferred jl_code_info_t, or value of the function if jlcall_api == 2, or null
     jl_value_t *inferred_const; // inferred constant return value, or null
-    jl_method_t *def; // method this is specialized from, null if this is a toplevel thunk
     size_t min_world;
     size_t max_world;
     uint8_t inInference; // flags to tell if inference is running on this function
@@ -422,7 +426,7 @@ typedef struct _jl_typemap_entry_t {
     size_t min_world;
     size_t max_world;
     union {
-        jl_value_t *value;
+        jl_value_t *value; // generic accessor
         jl_method_instance_t *linfo; // [nullable] for guard entries
         jl_method_t *method;
     } func;

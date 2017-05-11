@@ -631,17 +631,17 @@ jl_value_t *jl_interpret_call(jl_method_instance_t *lam, jl_value_t **args, uint
         return lam->inferred_const;
     jl_code_info_t *src = (jl_code_info_t*)lam->inferred;
     if (!src || (jl_value_t*)src == jl_nothing) {
-        if (lam->def->isstaged) {
+        if (lam->def.method->isstaged) {
             src = jl_code_for_staged(lam);
             lam->inferred = (jl_value_t*)src;
             jl_gc_wb(lam, src);
         }
         else {
-            src = (jl_code_info_t*)lam->def->source;
+            src = (jl_code_info_t*)lam->def.method->source;
         }
     }
     if (src && (jl_value_t*)src != jl_nothing) {
-        src = jl_uncompress_ast(lam->def, (jl_array_t*)src);
+        src = jl_uncompress_ast(lam->def.method, (jl_array_t*)src);
         lam->inferred = (jl_value_t*)src;
         jl_gc_wb(lam, src);
     }
@@ -657,12 +657,12 @@ jl_value_t *jl_interpret_call(jl_method_instance_t *lam, jl_value_t **args, uint
     locals[1] = (jl_value_t*)stmts;
     interpreter_state s;
     s.src = src;
-    s.module = lam->def->module;
+    s.module = lam->def.method->module;
     s.locals = locals + 2;
     s.sparam_vals = lam->sparam_vals;
     size_t i;
-    for (i = 0; i < lam->def->nargs; i++) {
-        if (lam->def->isva && i == lam->def->nargs - 1)
+    for (i = 0; i < lam->def.method->nargs; i++) {
+        if (lam->def.method->isva && i == lam->def.method->nargs - 1)
             s.locals[i] = jl_f_tuple(NULL, &args[i], nargs - i);
         else
             s.locals[i] = args[i];

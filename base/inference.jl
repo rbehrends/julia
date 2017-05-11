@@ -153,7 +153,7 @@ mutable struct InferenceState
                             optimize::Bool, cached::Bool, params::InferenceParams)
         code = src.code::Array{Any,1}
         nl = label_counter(code) + 1
-        toplevel = !isdefined(linfo, :def)
+        toplevel = !isa(linfo.def, Method)
 
         if !toplevel && isempty(linfo.sparam_vals) && !isempty(linfo.def.sparam_syms)
             # linfo is unspecialized
@@ -249,7 +249,7 @@ mutable struct InferenceState
             meth = linfo.def
             inmodule = meth.module
         else
-            inmodule = current_module() # toplevel thunks are inferred in the current module
+            inmodule = linfo.def::Module
         end
 
         if cached && !toplevel
@@ -278,10 +278,11 @@ end
 # create copies of the CodeInfo definition, and any fields that type-inference might modify
 # TODO: post-inference see if we can swap back to the original arrays
 function get_source(li::MethodInstance)
-    if isa(li.def.source, Array{UInt8,1})
-        src = ccall(:jl_uncompress_ast, Any, (Any, Any), li.def, li.def.source)
+    m = li.def::Method
+    if isa(m.source, Array{UInt8,1})
+        src = ccall(:jl_uncompress_ast, Any, (Any, Any), m, m.source)
     else
-        src = ccall(:jl_copy_code_info, Ref{CodeInfo}, (Any,), li.def.source)
+        src = ccall(:jl_copy_code_info, Ref{CodeInfo}, (Any,), m.source)
         src.code = copy_exprargs(src.code)
         src.slotnames = copy(src.slotnames)
         src.slotflags = copy(src.slotflags)
@@ -1308,7 +1309,7 @@ function abstract_call_gf_by_type(f::ANY, atype::ANY, sv::InferenceState)
             for infstate in active
                 infstate === nothing && continue
                 infstate = infstate::InferenceState
-                if isdefined(infstate.linfo, :def) && method === infstate.linfo.def
+                if method === infstate.linfo.def
                     if mightlimitlength && ls > length(unwrap_unionall(infstate.linfo.specTypes).parameters)
                         limitlength = true
                     end
@@ -1931,7 +1932,7 @@ function abstract_eval(e::ANY, vtypes::VarTable, sv::InferenceState)
         t = Any
     elseif e.head === :foreigncall
         rt = e.args[2]
-        if isdefined(sv.linfo, :def)
+        if isa(sv.linfo.def, Method)
             spsig = sv.linfo.def.sig
             if isa(spsig, UnionAll)
                 if !isempty(sv.linfo.sparam_vals)
@@ -2331,7 +2332,7 @@ function converge_valid_age!(sv::InferenceState)
                 i.max_valid = sv.max_valid
                 updated = true
             end
-            @assert !isdefined(i.linfo, :def) || !i.cached || i.min_valid <= i.params.world <= i.max_valid "invalid age range update"
+            @assert !isa(i.linfo.def, Method) || !i.cached || i.min_valid <= i.params.world <= i.max_valid "invalid age range update"
             if updated
                 converge_valid_age!(i)
             end
@@ -2344,7 +2345,7 @@ end
 function update_valid_age!(min_valid::UInt, max_valid::UInt, sv::InferenceState)
     sv.min_valid = max(sv.min_valid, min_valid)
     sv.max_valid = min(sv.max_valid, max_valid)
-    @assert !isdefined(sv.linfo, :def) || !sv.cached || sv.min_valid <= sv.params.world <= sv.max_valid "invalid age range update"
+    @assert !isa(sv.linfo.def, Method) || !sv.cached || sv.min_valid <= sv.params.world <= sv.max_valid "invalid age range update"
     nothing
 end
 update_valid_age!(edge::InferenceState, sv::InferenceState) = update_valid_age!(edge.min_valid, edge.max_valid, sv)
@@ -2352,7 +2353,7 @@ update_valid_age!(li::MethodInstance, sv::InferenceState) = update_valid_age!(mi
 
 # temporarily accumulate our edges to later add as backedges in the callee
 function add_backedge(li::MethodInstance, caller::InferenceState)
-    isdefined(caller.linfo, :def) || return # don't add backedges to toplevel exprs
+    isa(caller.linfo.def, Method) || return # don't add backedges to toplevel exprs
     if caller.stmt_edges[caller.currpc] === ()
         caller.stmt_edges[caller.currpc] = []
     end
@@ -2363,7 +2364,7 @@ end
 
 # temporarily accumulate our no method errors to later add as backedges in the callee method table
 function add_mt_backedge(mt::MethodTable, typ::ANY, caller::InferenceState)
-    isdefined(caller.linfo, :def) || return # don't add backedges to toplevel exprs
+    isa(caller.linfo, Method) || return # don't add backedges to toplevel exprs
     if caller.stmt_edges[caller.currpc] === ()
         caller.stmt_edges[caller.currpc] = []
     end
@@ -2374,7 +2375,7 @@ end
 
 # add the real backedges now
 function finalize_backedges(frame::InferenceState)
-    toplevel = !isdefined(frame.linfo, :def)
+    toplevel = !isa(frame.linfo.def, Method)
     if !toplevel && frame.cached && frame.max_valid == typemax(UInt)
         caller = frame.linfo
         for edges in frame.stmt_edges
@@ -2524,7 +2525,7 @@ function typeinf_code(linfo::MethodInstance, optimize::Bool, cached::Bool,
             if min_world(linfo) <= params.world <= max_world(linfo)
                 inf = linfo.inferred
                 if linfo.jlcall_api == 2
-                    method = linfo.def
+                    method = linfo.def::Method
                     tree = ccall(:jl_new_code_info_uninit, Ref{CodeInfo}, ())
                     tree.code = Any[ Expr(:return, QuoteNode(linfo.inferred_const)) ]
                     tree.slotnames = Any[ compiler_temp_sym for i = 1:method.nargs ]
@@ -2582,7 +2583,7 @@ function typeinf_type(method::Method, atypes::ANY, sparams::SimpleVector,
 end
 
 function typeinf_ext(linfo::MethodInstance, world::UInt)
-    if isdefined(linfo, :def)
+    if isa(linfo.def, Method)
         # method lambda - infer this specialization via the method cache
         return typeinf_code(linfo, true, true, InferenceParams(world))
     else
@@ -2993,8 +2994,9 @@ function optimize(me::InferenceState)
     end
 
     # determine and cache inlineability
-    if !me.src.inlineable && !force_noinline && isdefined(me.linfo, :def)
-        me.src.inlineable = isinlineable(me.linfo.def, me.src)
+    def = me.linfo.def
+    if !me.src.inlineable && !force_noinline && isa(def, Method)
+        me.src.inlineable = isinlineable(def, me.src)
     end
     me.src.inferred = true
     nothing
@@ -3005,7 +3007,7 @@ end
 function finish(me::InferenceState)
     me.currpc = 1 # used by add_backedge
     if me.cached
-        toplevel = !isdefined(me.linfo, :def)
+        toplevel = !isa(me.linfo.def, Method)
         if !toplevel
             min_valid = me.min_valid
             max_valid = me.max_valid
@@ -3047,13 +3049,14 @@ function finish(me::InferenceState)
 
             if !toplevel
                 if !me.const_api
+                    def = me.linfo.def::Method
                     keeptree = me.src.inlineable || ccall(:jl_is_cacheable_sig, Int32, (Any, Any, Any),
-                        me.linfo.specTypes, me.linfo.def.sig, me.linfo.def) != 0
+                        me.linfo.specTypes, def.sig, def) != 0
                     if !keeptree
                         inferred_result = nothing
                     else
                         # compress code for non-toplevel thunks
-                        inferred_result = ccall(:jl_compress_ast, Any, (Any, Any), me.linfo.def, inferred_result)
+                        inferred_result = ccall(:jl_compress_ast, Any, (Any, Any), def, inferred_result)
                     end
                 end
             end
