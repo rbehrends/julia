@@ -282,10 +282,17 @@ mutable struct TCPSocket <: LibuvStream
         return tcp
     end
 end
-function TCPSocket()
+function TCPSocket(; delay=true)  # kw arg "delay": if true, libuv delays creation of the socket
+                                  # fd till the first bind call
+
     tcp = TCPSocket(Libc.malloc(_sizeof_uv_tcp), StatusUninit)
-    err = ccall(:uv_tcp_init, Cint, (Ptr{Void}, Ptr{Void}),
-                eventloop(), tcp.handle)
+    if delay
+        err = ccall(:uv_tcp_init, Cint, (Ptr{Void}, Ptr{Void}),
+                    eventloop(), tcp.handle)
+    else
+        err = ccall(:uv_tcp_init_ex, Cint, (Ptr{Void}, Ptr{Void}, Cuint),
+                    eventloop(), tcp.handle, 2) # AF_INET is 2
+    end
     uv_error("failed to create tcp socket", err)
     tcp.status = StatusInit
     return tcp
@@ -840,16 +847,18 @@ listenany(default_port) = listenany(IPv4(UInt32(0)), default_port)
 Get the IP address and the port that the given `TCPSocket` is connected to
 (or bound to, in the case of `TCPServer`).
 """
-function getsockname(sock::Union{TCPServer,TCPSocket})
+getsockname(sock::Union{TCPServer, TCPSocket}) = _sockname(sock, isa(sock, TCPServer))
+
+function _sockname(sock, self)
     rport = Ref{Cushort}(0)
     raddress = zeros(UInt8, 16)
     rfamily = Ref{Cuint}(0)
-    r = if isa(sock, TCPServer)
-        ccall(:jl_tcp_getsockname, Int32,
+    if self
+        r = ccall(:jl_tcp_getsockname, Int32,
                 (Ptr{Void}, Ref{Cushort}, Ptr{Void}, Ref{Cuint}),
                 sock.handle, rport, raddress, rfamily)
     else
-        ccall(:jl_tcp_getpeername, Int32,
+        r = ccall(:jl_tcp_getpeername, Int32,
                 (Ptr{Void}, Ref{Cushort}, Ptr{Void}, Ref{Cuint}),
                 sock.handle, rport, raddress, rfamily)
     end
