@@ -613,11 +613,11 @@ if GMP_VERSION.major >= 6
         x = BigInt()
         while true
             # note: on CRAY computers, the second argument may be of type Cint (48 bits) and not Clong
-            xd = MPZ.limbs_write(x, g.nlimbs)
+            xd = MPZ.limbs_write!(x, g.nlimbs)
             limbs = unsafe_wrap(Array, xd, g.nlimbs)
             rand!(rng, limbs)
             limbs[end] &= g.mask
-            MPZ.limbs_finish(x, g.nlimbs)
+            MPZ.limbs_finish!(x, g.nlimbs)
             x <= g.m && return MPZ.add!(x, g.a)
         end
     end
@@ -627,7 +627,7 @@ else
         while true
             rand!(rng, g.limbs)
             g.limbs[end] &= g.mask
-            MPZ.import_(x, length(g.limbs), -1, sizeof(Limb), 0, 0, g.limbs)
+            MPZ.import!(x, length(g.limbs), -1, sizeof(Limb), 0, 0, g.limbs)
             x <= g.m && return MPZ.add!(x, g.a)
         end
     end
