@@ -710,6 +710,8 @@ JL_DLLEXPORT int jl_fs_rename(const char *src_path, const char *dst_path);
 
 #if defined(_CPU_X86_) || defined(_CPU_X86_64_)
 #define HAVE_CPUID
+JL_DLLEXPORT void jl_cpuid(int32_t CPUInfo[4], int32_t InfoType);
+JL_DLLEXPORT void jl_cpuidex(int32_t CPUInfo[4], int32_t InfoType, int32_t subInfoType);
 #endif
 
 #ifdef SEGV_EXCEPTION

@@ -1075,12 +1075,6 @@ void jl_add_to_shadow(Module *m)
 }
 #endif
 
-#ifdef HAVE_CPUID
-extern "C" {
-    extern void jl_cpuid(int32_t CPUInfo[4], int32_t InfoType);
-}
-#endif
-
 static void jl_gen_llvm_globaldata(llvm::Module *mod, ValueToValueMapTy &VMap,
                                    const char *sysimg_data, size_t sysimg_len)
 {

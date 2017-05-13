@@ -212,10 +212,6 @@ static jl_value_t *jl_deserialize_value(jl_serializer_state *s, jl_value_t **loc
 static jl_value_t ***sysimg_gvars = NULL;
 static void **sysimg_fvars = NULL;
 
-#ifdef HAVE_CPUID
-extern void jl_cpuid(int32_t CPUInfo[4], int32_t InfoType);
-#endif
-
 extern int globalUnique;
 static void *jl_sysimg_handle = NULL;
 static uint64_t sysimage_base = 0;
