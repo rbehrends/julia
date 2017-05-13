@@ -221,6 +221,11 @@ JL_DLLEXPORT int jl_running_on_valgrind(void)
     return RUNNING_ON_VALGRIND;
 }
 
+STATIC_INLINE uint64_t i32_to_i64(uint64_t hi, uint64_t lo)
+{
+    return (hi << 32) | lo;
+}
+
 static void jl_load_sysimg_so(void)
 {
 #ifndef _OS_WINDOWS_
@@ -242,6 +247,28 @@ static void jl_load_sysimg_so(void)
         *sysimg_gvars[tls_offset_idx - 1] =
             (jl_value_t*)(uintptr_t)(jl_tls_offset == -1 ? 0 : jl_tls_offset);
 #endif
+        typedef void (*dispatch_t)(uint64_t, uint64_t, uint64_t, size_t*, void***, size_t**);
+        dispatch_t dispatchf = (dispatch_t)jl_dlsym(jl_sysimg_handle,
+                                                    "jl_dispatch_sysimg_fvars");
+        if (dispatchf) {
+            int32_t info[4];
+            jl_cpuid(info, 1);
+            int32_t infoex[4];
+            jl_cpuidex(infoex, 7, 0);
+            uint64_t mask = i32_to_i64(info[3], info[2]);
+            uint64_t emask1 = i32_to_i64(infoex[1], infoex[2]);
+            uint64_t emask2 = i32_to_i64(infoex[3], 0);
+            size_t nfunc = 0;
+            void **fptrs = NULL;
+            size_t *fidxs = NULL;
+            dispatchf(mask, emask1, emask2, &nfunc, &fptrs, &fidxs);
+            if (nfunc && fptrs && fidxs) {
+                for (size_t i = 0; i < nfunc; i++) {
+                    size_t fi = fidxs[i];
+                    sysimg_fvars[fi] = fptrs[i];
+                }
+            }
+        }
         const char *cpu_target = (const char*)jl_dlsym(jl_sysimg_handle, "jl_sysimg_cpu_target");
         if (strcmp(cpu_target,jl_options.cpu_target) != 0)
             jl_error("Julia and the system image were compiled for different architectures.\n"
