@@ -80,7 +80,7 @@ end
 module MPZ
 # wrapping of libgmp functions
 # - "output parameters" are labeled x, y, z, and are returned when appropriate
-# - constant input parameter are labeled a, b, c
+# - constant input parameters are labeled a, b, c
 # - a method modifying its input has a "!" appendend to its name, according to Julia's conventions
 # - some convenient methods are added (in addition to the pure MPZ ones), e.g. `add(a, b) = add!(BigInt(), a, b)`
 #   and `add!(x, a) = add!(x, x, a)`.
