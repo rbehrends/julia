@@ -958,7 +958,7 @@ if is_unix() # aka have ssh
             end
         end
 
-        remotecall_fetch(plst->rmprocs(plst; waitfor=5.0), 1, new_pids)
+        remotecall_fetch(rmprocs, 1, new_pids)
     end
 
     print("\n\nTesting SSHManager. A minimum of 4GB of RAM is recommended.\n")
@@ -977,25 +977,36 @@ if is_unix() # aka have ssh
         append!(hosts, localhost_aliases)
     end
 
+    println("OK TILL HERE 0")
+
     print("\nTesting SSH addprocs with $(length(hosts)) workers...\n")
     new_pids = addprocs_with_testenv(hosts; sshflags=sshflags)
     @test length(new_pids) == length(hosts)
     test_n_remove_pids(new_pids)
+
+    println("OK TILL HERE 1")
 
     print("\nMixed ssh addprocs with :auto\n")
     new_pids = addprocs_with_testenv(["localhost", ("127.0.0.1", :auto), "localhost"]; sshflags=sshflags)
     @test length(new_pids) == (2 + Sys.CPU_CORES)
     test_n_remove_pids(new_pids)
 
+    println("OK TILL HERE 2")
+
     print("\nMixed ssh addprocs with numeric counts\n")
     new_pids = addprocs_with_testenv([("localhost", 2), ("127.0.0.1", 2), "localhost"]; sshflags=sshflags)
     @test length(new_pids) == 5
     test_n_remove_pids(new_pids)
 
+    println("OK TILL HERE 3")
+
     print("\nssh addprocs with tunnel\n")
     new_pids = addprocs_with_testenv([("localhost", num_workers)]; tunnel=true, sshflags=sshflags)
     @test length(new_pids) == num_workers
     test_n_remove_pids(new_pids)
+
+
+    println("OK TILL HERE 4")
 
     print("\nAll supported formats for hostname\n")
     h1 = "localhost"
@@ -1019,6 +1030,8 @@ if is_unix() # aka have ssh
             test_n_remove_pids(new_pids)
         end
     end
+
+    println("OK TILL HERE 5")
 
 end # unix-only
 end # full-test

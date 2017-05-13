@@ -456,16 +456,17 @@ const client_port = Ref{Cushort}(0)
 
 function socket_reuse_port()
     s = TCPSocket(delay = false)
-    client_host = Ref{Cuint}(0)
 
     @static if is_linux() || is_apple()
         try
+            is_linux() && bind_client_port(s)
             rc = ccall(:jl_tcp_reuseport, Int32, (Ptr{Void},), s.handle)
             if rc > 0  # SO_REUSEPORT is unsupported, just return the ephemerally bound socket
                 return s
             elseif rc < 0
                 throw(SystemError("setsockopt() SO_REUSEPORT : "))
             end
+            is_apple() && bind_client_port(s)
         catch e
             # This is an issue only on systems with lots of client connections, hence delay the warning
             nworkers() > 128 && warn_once("Error trying to reuse client port number, falling back to plain socket : ", e)
@@ -474,13 +475,16 @@ function socket_reuse_port()
         end
     end
 
-    ccall(:jl_tcp_bind, Int32,
-            (Ptr{Void}, UInt16, UInt32, Cuint),
-            s.handle, hton(client_port[]), hton(UInt32(0)), 0) < 0 && throw(SystemError("bind() : "))
+    return s
+end
+
+function bind_client_port(s)
+    err = ccall(:jl_tcp_bind, Int32, (Ptr{Void}, UInt16, UInt32, Cuint),
+                            s.handle, hton(client_port[]), hton(UInt32(0)), 0)
+    Base.uv_error("bind() failed", err)
 
     _addr, port = Base._sockname(s, true)
     client_port[] = port
-
     return s
 end
 

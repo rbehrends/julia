@@ -282,9 +282,9 @@ mutable struct TCPSocket <: LibuvStream
         return tcp
     end
 end
-function TCPSocket(; delay=true)  # kw arg "delay": if true, libuv delays creation of the socket
-                                  # fd till the first bind call
 
+# kw arg "delay": if true, libuv delays creation of the socket fd till the first bind call
+function TCPSocket(; delay=true)
     tcp = TCPSocket(Libc.malloc(_sizeof_uv_tcp), StatusUninit)
     if delay
         err = ccall(:uv_tcp_init, Cint, (Ptr{Void}, Ptr{Void}),
