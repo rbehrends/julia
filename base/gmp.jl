@@ -44,15 +44,11 @@ mutable struct BigInt <: Integer
     d::Ptr{Limb}
     function BigInt()
         b = new(zero(Cint), zero(Cint), C_NULL)
-        ccall((:__gmpz_init,:libgmp), Void, (Ptr{BigInt},), &b)
+        MPZ.init!(b)
         finalizer(b, cglobal((:__gmpz_clear, :libgmp)))
         return b
     end
 end
-
-const ZERO = BigInt()
-const ONE  = BigInt()
-const _ONE = Limb[1]
 
 function __init__()
     try
@@ -86,7 +82,14 @@ module MPZ
 #   and `add!(x, a) = add!(x, x, a)`.
 using Base.GMP: BigInt, Limb
 
+const bitcnt_t = Culong
+
 gmpz(op::Symbol) = (Symbol(:__gmpz_, op), :libgmp)
+
+init!(x::BigInt) = (ccall((:__gmpz_init, :libgmp), Void, (Ptr{BigInt},), &x); x)
+init() = init!(BigInt())
+init2!(x::BigInt, a) = (ccall((:__gmpz_init2, :libgmp), Void, (Ptr{BigInt}, bitcnt_t), &x, a); x)
+init2(a) = init2!(BigInt(), a)
 
 sizeinbase(a::BigInt, b) = Int(ccall((:__gmpz_sizeinbase, :libgmp), Csize_t, (Ptr{BigInt}, Cint), &a, b))
 
@@ -175,6 +178,10 @@ import!(x::BigInt, a, b, c, d, e, f) =
           &x, a, b, c, d, e, f)
 
 end # module MPZ
+
+const ZERO = BigInt()
+const ONE  = BigInt()
+const _ONE = Limb[1]
 
 widen(::Type{Int128})  = BigInt
 widen(::Type{UInt128}) = BigInt
