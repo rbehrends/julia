@@ -205,7 +205,7 @@ static LONG WINAPI _exception_handler(struct _EXCEPTION_POINTERS *ExceptionInfo,
             case EXCEPTION_ACCESS_VIOLATION:
                 if (jl_addr_is_safepoint(ExceptionInfo->ExceptionRecord->ExceptionInformation[1])) {
 #ifdef JULIA_ENABLE_THREADING
-                    jl_set_gc_and_wait();
+                    jl_suspend_thread_and_wait_for_gc(ptls);
                     // Do not raise sigint on worker thread
                     if (ptls->tid != 0)
                         return EXCEPTION_CONTINUE_EXECUTION;

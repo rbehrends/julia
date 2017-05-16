@@ -94,6 +94,14 @@ typedef struct {
     char *data_stack;
 } jl_gc_mark_cache_t;
 
+// Information that the GC needs to scan the thread stack
+typedef struct {
+    void *stack_lo;
+    void *stack_hi;
+    void *registers; // NULL if registers are already on the stack.
+    size_t regsize;
+} jl_thread_stack_info_t;
+
 // This includes all the thread local states we care about for a thread.
 #define JL_MAX_BT_SIZE 80000
 typedef struct _jl_tls_states_t {
@@ -116,6 +124,7 @@ typedef struct _jl_tls_states_t {
     struct _jl_task_t *volatile current_task;
     struct _jl_task_t *root_task;
     void *stackbase;
+    jl_thread_stack_info_t *thread_stack_info;
     char *stack_lo;
     char *stack_hi;
     jl_jmp_buf *volatile jmp_target;

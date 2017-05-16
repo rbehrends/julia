@@ -6,6 +6,7 @@
 #include <mach/mach_traps.h>
 #include <mach/task.h>
 #include <mach/mig_errors.h>
+#include <mach/machine.h>
 #include <AvailabilityMacros.h>
 
 #ifdef MAC_OS_X_VERSION_10_9
@@ -39,6 +40,9 @@ void jl_mach_gc_end(void)
 static int jl_mach_gc_wait(jl_ptls_t ptls2,
                            mach_port_t thread, int16_t tid)
 {
+    jl_thread_stack_info_t thread_stack_info;
+    ptls2->thread_stack_info = &thread_stack_info;
+    thread_stack_info.stack_hi = ptls2->stack_hi;
     jl_mutex_lock_nogc(&safepoint_lock);
     if (!jl_gc_running) {
         // GC is done before we get the message or the safepoint is enabled
@@ -52,6 +56,40 @@ static int jl_mach_gc_wait(jl_ptls_t ptls2,
     uintptr_t item = tid | (((uintptr_t)gc_state) << 16);
     arraylist_push(&suspended_threads, (void*)item);
     thread_suspend(thread);
+#if defined(_CPU_X86_64_)
+    mach_msg_type_number_t ts_count = x86_THREAD_STATE64_COUNT;
+    x86_thread_state64_t thread_state;
+    if (thread_get_state(thread,
+            x86_THREAD_STATE64,
+	    (thread_state_t) &thread_state, &ts_count) != KERN_SUCCESS)
+	abort();
+    thread_stack_info.registers = &thread_state;
+    thread_stack_info.regsize = sizeof(thread_state);
+#if __DARWIN_UNIX03
+#define RSP __rsp
+#else
+#define RSP rsp
+#endif
+    thread_stack_info.stack_lo = (void *) thread_state.RSP;
+#elif defined(_CPU_X86_)
+    mach_msg_type_number_t ts_count = x86_THREAD_STATE32_COUNT;
+    x86_thread_state32_t thread_state;
+    if (thread_get_state(thread,
+            x86_THREAD_STATE32,
+	    (thread_state_t) &thread_state, &ts_count) != KERN_SUCCESS)
+	abort();
+    thread_stack_info.registers = &thread_state;
+    thread_stack_info.regsize = sizeof(thread_state);
+#if __DARWIN_UNIX03
+#define ESP __esp
+#else
+#define ESP esp
+#endif
+    thread_stack_info.stack_lo = (void *)  thread_state.ESP;
+#else
+// TODO: Add support for ARM (iOS) and PPC (really old Macs).
+#error "Unsupported Darwin CPU"
+#endif
     jl_mutex_unlock_nogc(&safepoint_lock);
     return 1;
 }

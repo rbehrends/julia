@@ -590,6 +590,7 @@ static inline void jl_set_gc_and_wait(void)
     jl_safepoint_wait_gc();
     jl_atomic_store_release(&ptls->gc_state, state);
 }
+void jl_suspend_thread_and_wait_for_gc(jl_ptls_t ptls);
 #endif
 
 void jl_dump_native(const char *bc_fname, const char *obj_fname, const char *sysimg_data, size_t sysimg_len);

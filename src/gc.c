@@ -51,7 +51,18 @@ static size_t last_long_collect_interval;
 pagetable_t memory_map;
 
 // List of marked big objects.  Not per-thread.  Accessed only by master thread.
-bigval_t *big_objects_marked = NULL;
+typedef bigval_t treap_t;
+treap_t *big_objects_marked = NULL;
+treap_t *big_objects_global = NULL;
+
+static bigval_t *big_objects_lo, *big_objects_hi;
+
+static bigval_t *treap_find(treap_t *treap, void *);
+static void treap_insert(treap_t **treap, bigval_t *val);
+static int treap_delete(treap_t **treap, bigval_t *val);
+void *jl_debug_interior_ptr(jl_ptls_t ptls, void *p, char **status);
+
+STATIC_INLINE int gc_mark_queue_obj(jl_gc_mark_cache_t *gc_cache, gc_mark_sp_t *sp, void *_obj);
 
 // finalization
 // `ptls->finalizers` and `finalizer_list_marked` might have tagged pointers.
@@ -460,19 +471,29 @@ STATIC_INLINE void gc_update_heap_size(int64_t sz_ub, int64_t sz_est)
     last_full_live_est = sz_est;
 }
 
-static void gc_sync_cache_nolock(jl_ptls_t ptls, jl_gc_mark_cache_t *gc_cache)
+static void gc_sync_cache_nolock(jl_ptls_t ptls, jl_ptls_t ptls2)
 {
+    jl_gc_mark_cache_t *gc_cache = &ptls2->gc_cache;
     const int nbig = gc_cache->nbig_obj;
     for (int i = 0; i < nbig; i++) {
         void *ptr = gc_cache->big_obj[i];
         bigval_t *hdr = (bigval_t*)gc_ptr_clear_tag(ptr, 1);
-        gc_big_object_unlink(hdr);
         if (gc_ptr_tag(ptr, 1)) {
-            gc_big_object_link(hdr, &ptls->heap.big_objects);
+	    if (treap_delete(&ptls2->heap.big_objects, hdr)) {
+		treap_insert(&big_objects_global, hdr);
+	    }
         }
         else {
             // Move hdr from `big_objects` list to `big_objects_marked list`
-            gc_big_object_link(hdr, &big_objects_marked);
+	    /* TODO: we should be able to do this faster by doing 
+	     * a bulk operation at the end, as treaps support fast
+	     * bulk operations for merging.
+	     */
+	    if (!treap_delete(&ptls2->heap.big_objects, hdr)
+	      && !treap_delete(&big_objects_global, hdr)) {
+		abort();
+	    }
+	    treap_insert(&big_objects_marked, hdr);
         }
     }
     gc_cache->nbig_obj = 0;
@@ -485,7 +506,7 @@ static void gc_sync_cache_nolock(jl_ptls_t ptls, jl_gc_mark_cache_t *gc_cache)
 static void gc_sync_cache(jl_ptls_t ptls)
 {
     JL_LOCK_NOGC(&gc_cache_lock);
-    gc_sync_cache_nolock(ptls, &ptls->gc_cache);
+    gc_sync_cache_nolock(ptls, ptls);
     JL_UNLOCK_NOGC(&gc_cache_lock);
 }
 
@@ -494,7 +515,7 @@ static void gc_sync_all_caches_nolock(jl_ptls_t ptls)
 {
     for (int t_i = 0; t_i < jl_n_threads; t_i++) {
         jl_ptls_t ptls2 = jl_all_tls_states[t_i];
-        gc_sync_cache_nolock(ptls, &ptls2->gc_cache);
+        gc_sync_cache_nolock(ptls, ptls2);
     }
 }
 
@@ -701,6 +722,307 @@ static void sweep_weak_refs(void)
 
 // big value list
 
+// Comparing pointers in C without triggering undefined behavior
+// can be difficult. As the GC already assumes that the memory
+// range goes from 0 to 2^k-1 (region tables), we simply convert
+// to uintptr_t and compare those.
+
+STATIC_INLINE int cmp_ptr(void *p, void *q)
+{
+    uintptr_t paddr = (uintptr_t) p;
+    uintptr_t qaddr = (uintptr_t) q;
+    if (paddr < qaddr)
+	return -1;
+    else if (paddr > qaddr)
+	return 1;
+    else
+	return 0;
+}
+
+STATIC_INLINE int lt_ptr(void *a, void *b)
+{
+    return (uintptr_t) a < (uintptr_t) b;
+}
+
+STATIC_INLINE int gt_ptr(void *a, void *b)
+{
+    return (uintptr_t) a > (uintptr_t) b;
+}
+
+STATIC_INLINE void *max_ptr(void *a, void *b)
+{
+    if ((uintptr_t) a > (uintptr_t) b)
+        return a;
+    else
+	return b;
+}
+
+STATIC_INLINE void *min_ptr(void *a, void *b)
+{
+    if ((uintptr_t) a < (uintptr_t) b)
+        return a;
+    else
+	return b;
+}
+
+/* align pointer to full word if mis-aligned */
+STATIC_INLINE void *align_ptr(void *p)
+{
+    uintptr_t u = (uintptr_t) p;
+    u &= ~(sizeof(p)-1);
+    return (void *)u;
+}
+
+STATIC_INLINE int test_bigval_range(bigval_t *b, void *p)
+{
+    char *l = (char *)(&b->header);
+    char *r = l + b->sz;
+    if (lt_ptr(p, l)) return - 1;
+    if (!lt_ptr(p, r)) return 1;
+    return 0;
+}
+
+// For conservative stack scanning, we store bigval_t's in a treap.
+// We also maintain an upper and lower bound of all bigval_t allocations
+// in a treap so that we can quickly abort if something obviously isn't
+// a valid memory address to a bigval_t.
+//
+// Rationale: A balanced tree gives us both efficient lookups and the
+// ability to find the beginning of a memory segment in case the compiler
+// left us with a pointer to the interior of an object.
+//
+// It may prove worthwhile to replace treaps with red-block trees or
+// B-trees later on; right now, treaps have the virtue of simplicity
+// and robustness (assuming a decent RNG). Red-black trees can give
+// us guaranteed logarithmic performance, but are considerably more
+// complicated. In-memory B-trees may have better cache behavior for
+// search, but can be more expensive to construct (depending on the number
+// of entries in a node).
+
+#define L(t) ((t)->left)
+#define R(t) ((t)->right)
+
+#define ISTART(b) ((char *)(&((b)->header)))
+#define IEND(b) ((char *)(b) + sizeof(bigval_t) + b->sz)
+
+STATIC_INLINE void treap_rot_right(treap_t **treap)
+{
+    /*       t                 l       */
+    /*     /   \             /   \     */
+    /*    l     r    -->    a     t    */
+    /*   / \                     / \   */
+    /*  a   b                   b   r  */
+    treap_t *t = *treap;
+    treap_t *l = L(t);
+    treap_t *a = L(l);
+    treap_t *b = R(l);
+    L(l) = a;
+    R(l) = t;
+    L(t) = b;
+    *treap = l;
+}
+
+STATIC_INLINE void treap_rot_left(treap_t **treap)
+{
+    /*     t                   r       */
+    /*   /   \               /   \     */
+    /*  l     r    -->      t     b    */
+    /*       / \           / \         */
+    /*      a   b         l   a        */
+    treap_t *t = *treap;
+    treap_t *r = R(t);
+    treap_t *a = L(r);
+    treap_t *b = R(r);
+    L(r) = t;
+    R(r) = b;
+    R(t) = a;
+    *treap = r;
+}
+
+static bigval_t *treap_find(treap_t *treap, void *p)
+{
+    while (treap) {
+	int c = test_bigval_range(treap, p);
+	if (c == 0)
+	    return treap;
+	else if (c < 0)
+	    treap = L(treap);
+	else
+	    treap = R(treap);
+    }
+    return NULL;
+}
+
+static void treap_insert(treap_t **treap, bigval_t *val)
+{
+    treap_t *t = *treap;
+    if (t == NULL) {
+        L(val) = NULL;
+        R(val) = NULL;
+        *treap = val;
+    } else {
+        int c = cmp_ptr(val, t);
+        if (c < 0) {
+            treap_insert(&L(t), val);
+            if (L(t)->prio > t->prio) {
+                treap_rot_right(treap);
+            }
+        } else if (c > 0) {
+            treap_insert(&R(t), val);
+            if (R(t)->prio > t->prio) {
+                treap_rot_left(treap);
+            }
+        }
+    }
+}
+
+static void treap_delete_node(treap_t **treap)
+{
+    for (;;) {
+	treap_t *t = *treap;
+        if (L(t) == NULL) {
+            *treap = R(t);
+            break;
+        } else if (R(t) == NULL) {
+            *treap = L(t);
+            break;
+        } else {
+            if (L(t)->prio > R(t)->prio) {
+                treap_rot_right(treap);
+                treap = &R(*treap);
+            } else {
+                treap_rot_left(treap);
+                treap = &L(*treap);
+            }
+        }
+    }
+}
+
+static int treap_delete(treap_t **treap, bigval_t *val)
+{
+    while (*treap != NULL) {
+        int c = cmp_ptr(val, *treap);
+        if (c == 0) {
+          treap_delete_node(treap);
+	  return 1;
+        } else if (c < 0) {
+          treap = &L(*treap);
+        } else {
+          treap = &R(*treap);
+        }
+    }
+    return 0;
+}
+
+static bigval_t *treap_min(treap_t *treap)
+{
+    if (treap == NULL) return treap;
+    while (L(treap)) treap = L(treap);
+    return treap;
+}
+
+static bigval_t *treap_max(treap_t *treap)
+{
+    if (treap == NULL) return treap;
+    while (R(treap)) treap = R(treap);
+    return treap;
+}
+
+// #define JL_TEST_TREAPS
+
+#ifdef JL_TEST_TREAPS
+
+#define TREAP_ASSERT(c) \
+    if (!(c)) abort();
+
+void jl_validate_treap(treap_t *treap)
+{
+    if (treap) {
+        treap_t *l = L(treap);
+        treap_t *r = R(treap);
+	if (l) {
+	    TREAP_ASSERT(treap->prio >= l->prio);
+	    TREAP_ASSERT(lt_ptr(l, treap));
+	    jl_validate_treap(l);
+	}
+	if (r) {
+	    TREAP_ASSERT(treap->prio >= r->prio);
+	    TREAP_ASSERT(lt_ptr(treap, r));
+	    jl_validate_treap(r);
+	}
+    }
+}
+
+#endif
+
+// We use a simple 64-bit Xorshift RNG to generate priorities for our
+// treaps. By seeding each thread's RNG with the thread id + 1, we
+// should not encounter any conflicts even if programs are running
+// for years.
+
+static uint64_t *xorshift_rng_state;
+
+static uint64_t xorshift_rng(jl_ptls_t ptls)
+{
+    int16_t tid = ptls->tid;
+    uint64_t x = xorshift_rng_state[tid];
+    x = x ^ (x >> 12);
+    x = x ^ (x << 25);
+    x = x ^ (x >> 27);
+    xorshift_rng_state[tid] = x;
+    return x * (uint64_t) 0x2545F4914F6CDD1DUL;
+}
+
+#ifdef JL_TEST_TREAPS
+
+static int treap_nodecount(treap_t *treap)
+{
+    if (treap == NULL)
+	return 0;
+    else
+	return 1 + treap_nodecount(L(treap)) + treap_nodecount(R(treap));
+}
+
+static int treap_maxdepth(treap_t *treap)
+{
+    if (treap == NULL)
+	return 0;
+    int l = treap_maxdepth(L(treap));
+    int r = treap_maxdepth(R(treap));
+    if (l > r) return l + 1; else return r + 1;
+}
+
+#define NBIGVALS 10000
+
+static void test_treaps()
+{
+    bigval_t *big[NBIGVALS];
+    jl_printf("bigval_t size: %ld\n", sizeof(bigval_t));
+    treap_t *treap = NULL;
+    jl_ptls_t ptls = jl_get_ptls_states();
+    jl_printf("--------------------------\n");
+    for (int i=0; i<NBIGVALS; i++) {
+	big[i] = (bigval_t *) malloc_cache_align(sizeof(bigval_t));
+	big[i]->prio = xorshift_rng(ptls);
+	big[i]->sz = 0;
+	treap_insert(&treap, big[i]);
+    }
+    for (int i = 0; i<NBIGVALS; i += 2) {
+	treap_delete(&treap, big[i]);
+    }
+    if (treap_nodecount(treap) != NBIGVALS / 2) abort();
+    jl_printf("nodes: %d\n", treap_nodecount(treap));
+    jl_printf("depth: %d\n", treap_maxdepth(treap));
+    jl_printf("--------------------------\n");
+    for (int i = 1; i<NBIGVALS; i += 2) {
+	treap_delete(&treap, big[i]);
+    }
+    if (treap_nodecount(treap) != 0) abort();
+}
+
+
+#endif
+
 // Size includes the tag and the tag is not cleared!!
 JL_DLLEXPORT jl_value_t *jl_gc_big_alloc(jl_ptls_t ptls, size_t sz)
 {
@@ -723,66 +1045,68 @@ JL_DLLEXPORT jl_value_t *jl_gc_big_alloc(jl_ptls_t ptls, size_t sz)
 #endif
     v->sz = allocsz;
     v->age = 0;
-    gc_big_object_link(v, &ptls->heap.big_objects);
+    v->prio = xorshift_rng(ptls);
+    treap_insert(&ptls->heap.big_objects, v);
     return jl_valueof(&v->header);
 }
 
 // Sweep list rooted at *pv, removing and freeing any unmarked objects.
 // Return pointer to last `next` field in the culled list.
-static bigval_t **sweep_big_list(int sweep_full, bigval_t **pv)
+
+static void sweep_big_list(int sweep_full, treap_t **treap)
 {
-    bigval_t *v = *pv;
-    while (v != NULL) {
-        bigval_t *nxt = v->next;
-        int bits = v->bits.gc;
-        int old_bits = bits;
-        if (gc_marked(bits)) {
-            pv = &v->next;
-            int age = v->age;
-            if (age >= PROMOTE_AGE || bits == GC_OLD_MARKED) {
-                if (sweep_full || bits == GC_MARKED) {
-                    bits = GC_OLD;
-                }
-            }
-            else {
-                inc_sat(age, PROMOTE_AGE);
-                v->age = age;
-                bits = GC_CLEAN;
-            }
-            v->bits.gc = bits;
-        }
-        else {
-            // Remove v from list and free it
-            *pv = nxt;
-            if (nxt)
-                nxt->prev = pv;
-            gc_num.freed += v->sz&~3;
-#ifdef MEMDEBUG
-            memset(v, 0xbb, v->sz&~3);
-#endif
-            jl_free_aligned(v);
-        }
-        gc_time_count_big(old_bits, bits);
-        v = nxt;
+    bigval_t *v = *treap;
+    if (v == NULL)
+        return;
+    sweep_big_list(sweep_full, &L(v));
+    sweep_big_list(sweep_full, &R(v));
+    int bits = v->bits.gc;
+    int old_bits = bits;
+    if (gc_marked(bits)) {
+	int age = v->age;
+	if (age >= PROMOTE_AGE || bits == GC_OLD_MARKED) {
+	    if (sweep_full || bits == GC_MARKED) {
+		bits = GC_OLD;
+	    }
+	}
+	else {
+	    inc_sat(age, PROMOTE_AGE);
+	    v->age = age;
+	    bits = GC_CLEAN;
+	}
+	v->bits.gc = bits;
     }
-    return pv;
+    else {
+	// Remove v from list and free it
+	treap_delete_node(treap);
+	gc_num.freed += v->sz&~3;
+#ifdef MEMDEBUG
+	memset(v, 0xbb, v->sz&~3);
+#endif
+	jl_free_aligned(v);
+    }
+    gc_time_count_big(old_bits, bits);
+}
+
+static void treap_union(treap_t **dest, treap_t *src)
+{
+    // Note: there's a faster bulk operation for this,
+    // but for now, this suffices.
+    if (src != NULL) {
+	treap_union(dest, L(src));
+	treap_union(dest, R(src));
+	treap_insert(dest, src);
+    }
 }
 
 static void sweep_big(jl_ptls_t ptls, int sweep_full)
 {
     gc_time_big_start();
-    for (int i = 0;i < jl_n_threads;i++)
-        sweep_big_list(sweep_full, &jl_all_tls_states[i]->heap.big_objects);
+    sweep_big_list(sweep_full, &big_objects_global);
     if (sweep_full) {
-        bigval_t **last_next = sweep_big_list(sweep_full, &big_objects_marked);
-        // Move all survivors from big_objects_marked list to big_objects list.
-        if (ptls->heap.big_objects)
-            ptls->heap.big_objects->prev = last_next;
-        *last_next = ptls->heap.big_objects;
-        ptls->heap.big_objects = big_objects_marked;
-        if (ptls->heap.big_objects)
-            ptls->heap.big_objects->prev = &ptls->heap.big_objects;
-        big_objects_marked = NULL;
+        sweep_big_list(sweep_full, &big_objects_marked);
+	treap_union(&ptls->heap.big_objects, big_objects_marked);
+	big_objects_marked = NULL;
     }
     gc_time_big_end();
 }
@@ -1290,6 +1614,198 @@ void gc_queue_binding(jl_binding_t *bnd)
 #ifdef JL_DEBUG_BUILD
 static void *volatile gc_findval; // for usage from gdb, for finding the gc-root for a value
 #endif
+
+// In order to determine whether a pool slot represents an element
+// of a free list or is actually allocated, we look at the tag word.
+// Any slot that represents an object will have a pointer to its
+// type in the tag, and types themselves should have `jl_datatype_type`
+// in the tag word. Thus, if we get `jl_datatype_type` after dereferencing
+// the tag word at most twice, we know that it is an object; otherwise.
+// it belongs to a free list.
+
+STATIC_INLINE int is_valid_tag(void *p)
+{
+    jl_gc_pagemeta_t *meta = page_metadata(p);
+    if (!meta)
+	return 0;
+    char *page = gc_page_data(p);
+    size_t off = (char *) p - page;
+    return ((off - GC_PAGE_OFFSET) % meta->osize == 0);
+}
+
+STATIC_INLINE int is_valid_pool_obj(jl_taggedvalue_t *val)
+{
+    jl_value_t *datatype_type = (jl_value_t *)jl_datatype_type;
+    if (val->next == NULL) return 0; // end of free list
+    if (gc_marked(val->bits.gc)) return 0; // already marked by GC
+    if (jl_valueof(val->next) == datatype_type) return 1; // a type
+    val = (jl_taggedvalue_t *) gc_ptr_clear_tag(val->next, 3);
+    if (!is_valid_tag(val)) return 0;
+    // We now follow the header link. This must be either part
+    // of the free list (including NULL) or a type reference.
+    if (val->next == NULL) return 0;
+    if (val->bits.gc != 0) return 1;
+    if (jl_valueof(val->next) == datatype_type) return 1;
+    return 0;
+}
+
+STATIC_INLINE int bv_in_range(void *p, bigval_t *start, bigval_t *end)
+{
+    return start != NULL
+        && !lt_ptr(p, ISTART(start))
+	&& !gt_ptr(p, IEND(end));
+}
+
+STATIC_INLINE bigval_t *find_big_object(void *p)
+{
+    if (!bv_in_range(p, big_objects_lo, big_objects_hi))
+        return NULL;
+    bigval_t *result = treap_find(big_objects_global, p);
+    if (result == NULL)
+        result = treap_find(big_objects_marked, p);
+    return result;
+}
+
+int in_free_list(jl_gc_pagemeta_t *pg, jl_taggedvalue_t *p)
+{
+    if (pg->fl_begin_offset == (uint16_t) -1)
+	return -1;
+    for (jl_taggedvalue_t *q = page_pfl_beg(pg);
+         gc_page_data(q) == gc_page_data(p);
+	 q = q->next)
+    {
+	if (p == q)
+	    return 1;
+    }
+    return 0;
+}
+
+void jl_try_mark_cons(jl_ptls_t ptls, void *p,
+                      jl_gc_mark_cache_t *gc_cache, gc_mark_sp_t *sp)
+{
+    /* `p` can point just past the end of the object due
+     * to compiler optimizations. We decrement it by one
+     * byte; this means that the pointer will either lie
+     * within the tag or within the data. */
+    p = (char *) p - 1;
+    jl_gc_pagemeta_t *meta = page_metadata(p);
+    if (meta) {
+        char *page = gc_page_data(p);
+	// offset within page.
+	size_t off = (char *) p - page;
+	if (off < GC_PAGE_OFFSET) return;
+	// offset within object
+	size_t off2 = (off - GC_PAGE_OFFSET);
+	size_t osize = meta->osize;
+	off2 %= osize;
+	if (off - off2 + osize > GC_PAGE_SZ) return;
+	jl_taggedvalue_t *val = (jl_taggedvalue_t *)((char *)p - off2);
+#if 0
+	if (!is_valid_tag(val->next)) {
+	    printf("--------------------\n");
+	    printf("%d %d\n", meta->fl_begin_offset, meta->nfree);
+	    printf("%p %p %p\n",
+		    page_metadata(val), val->next, page_metadata(val->next));
+	    printf("%p %ld %ld %ld\n", p, GC_PAGE_OFFSET, off, off2);
+	    printf("%p %p %ld\n", page, val, osize);
+	    printf("%u %u %d\n", meta->fl_begin_offset, meta->fl_end_offset,
+		    in_free_list(meta, val));
+	}
+#endif
+	if (!is_valid_pool_obj(val)) return;
+	gc_mark_queue_obj(gc_cache, sp, jl_valueof(val));
+	return;
+    }
+    bigval_t *b = find_big_object(p);
+    if (b) {
+        gc_mark_queue_obj(gc_cache, sp, jl_valueof(&b->header));
+        return;
+    }
+}
+
+#ifdef JULIA_ENABLE_THREADING
+void jl_suspend_thread_and_wait_for_gc(jl_ptls_t ptls)
+{
+    jl_thread_stack_info_t thread_stack_info;
+    ptls->thread_stack_info = &thread_stack_info;
+    uintptr_t *lo = (uintptr_t *) ptls->stack_lo;
+    uintptr_t *hi = (uintptr_t *) ptls->stack_hi;
+    // Poor person's way of finding the stack bottom.
+    // We're doing this here so that the work is distributed
+    // across stacks.
+    // Rough benchmarking indicates that it takes <0.5ms for an 8MB
+    // thread stack area on a reasonably modern processor.
+    // Assume stack_lo and stack_hi are page-aligned.
+    while (lo < hi && (lo[0] | lo[1] | lo[2] | lo[3]))
+	lo += 4;
+    while (lo < hi && (hi[-4] | hi[-3] | hi[-2] | hi[-1]))
+	hi -= 4;
+    thread_stack_info.stack_lo = lo;
+    thread_stack_info.stack_hi = hi;
+    thread_stack_info.registers = NULL;
+    jl_set_gc_and_wait();
+}
+#endif
+
+static void jl_mark_range_cons(jl_ptls_t ptls, jl_gc_mark_cache_t *gc_cache,
+                               gc_mark_sp_t *sp, void **start, void **end)
+{
+    while (lt_ptr(start, end)) {
+        void *p = *start;
+
+	if (p != NULL)
+	    jl_try_mark_cons(ptls, p, gc_cache, sp);
+	start++;
+    }
+}
+
+static void jl_mark_counted_cons(jl_ptls_t ptls, jl_gc_mark_cache_t *gc_cache,
+                                 gc_mark_sp_t *sp, void **start, size_t bytes)
+{
+    size_t count = bytes / sizeof(void *);
+    while (count) {
+        void *p = *start;
+	    jl_try_mark_cons(ptls, p, gc_cache, sp);
+	start++;
+	count--;
+    }
+}
+
+void jl_mark_stack_cons(jl_ptls_t ptls, jl_gc_mark_cache_t *gc_cache,
+                        gc_mark_sp_t *sp, int this_thread)
+{
+    void **top = (void **)(ptls->stackbase);
+    void **bottom;
+    jl_jmp_buf registers;
+    if (this_thread) {
+	jl_setjmp(registers, 0);
+	bottom = (void **)(registers);
+	void **top = (void **)(ptls->stackbase);
+	if (lt_ptr(top, bottom)) {
+	    bottom = (void **)((char *)bottom + sizeof(registers));
+	    bottom = top;
+	}
+	bottom = (void **) align_ptr(bottom);
+    } else {
+	bottom = (void **) ptls->thread_stack_info->stack_lo;
+    }
+    jl_mark_range_cons(ptls, gc_cache, sp, bottom, top);
+    if (!this_thread && ptls->thread_stack_info->registers != NULL) {
+        jl_mark_counted_cons(ptls, gc_cache, sp,
+	    (void **) ptls->thread_stack_info->registers,
+	    ptls->thread_stack_info->regsize);
+    }
+}
+
+void jl_mark_task_stack_cons(jl_ptls_t ptls, jl_gc_mark_cache_t *gc_cache,
+                             gc_mark_sp_t *sp, jl_task_t *task)
+{
+    void **bottom = (void **) task->stkbuf;
+    size_t size = (task->ssize + sizeof(void *) - 1) / sizeof(void *);
+    jl_mark_counted_cons(ptls, gc_cache, sp, bottom, size);
+    jl_mark_counted_cons(ptls, gc_cache, sp,
+	    (void **)&(task->ctx), sizeof(task->ctx));
+}
 
 // Handle the case where the stack is only partially copied.
 STATIC_INLINE uintptr_t gc_get_stack_addr(void *_addr, uintptr_t offset,
@@ -2155,7 +2671,7 @@ extern jl_typemap_entry_t *call_cache[N_CALL_CACHE];
 extern jl_array_t *jl_all_methods;
 
 static void jl_gc_queue_thread_local(jl_gc_mark_cache_t *gc_cache, gc_mark_sp_t *sp,
-                                     jl_ptls_t ptls2)
+                                     jl_ptls_t ptls2, int this_thread)
 {
     // `current_module` might not have a value when the thread is not
     // running.
@@ -2164,6 +2680,7 @@ static void jl_gc_queue_thread_local(jl_gc_mark_cache_t *gc_cache, gc_mark_sp_t 
     gc_mark_queue_obj(gc_cache, sp, ptls2->current_task);
     gc_mark_queue_obj(gc_cache, sp, ptls2->root_task);
     gc_mark_queue_obj(gc_cache, sp, ptls2->exception_in_transit);
+    jl_mark_stack_cons(ptls2, gc_cache, sp, this_thread);
 }
 
 // mark the initial root set
@@ -2349,6 +2866,20 @@ static void jl_gc_queue_remset(jl_gc_mark_cache_t *gc_cache, gc_mark_sp_t *sp, j
     ptls2->heap.rem_bindings.len = n_bnd_refyoung;
 }
 
+static void merge_thread_local_bigvals(void)
+{
+    for (int i = 0; i < jl_n_threads; i++) {
+        jl_ptls_t ptls = jl_all_tls_states[i];
+	treap_union(&big_objects_global, ptls->heap.big_objects);
+	ptls->heap.big_objects = NULL;
+    }
+    // jl_validate_treap(big_objects_global);
+    big_objects_lo = (bigval_t *)
+	min_ptr(treap_min(big_objects_global), treap_min(big_objects_marked));
+    big_objects_hi = (bigval_t *)
+	max_ptr(treap_max(big_objects_global), treap_max(big_objects_marked));
+}
+
 // Only one thread should be running in this function
 static int _jl_gc_collect(jl_ptls_t ptls, int full)
 {
@@ -2368,8 +2899,10 @@ static int _jl_gc_collect(jl_ptls_t ptls, int full)
         // 2.1. mark every object in the `last_remsets` and `rem_binding`
         jl_gc_queue_remset(gc_cache, &sp, ptls2);
         // 2.2. mark every thread local root
-        jl_gc_queue_thread_local(gc_cache, &sp, ptls2);
+        jl_gc_queue_thread_local(gc_cache, &sp, ptls2, ptls == ptls2);
     }
+    // 2.3 merge the thread-local big object treaps
+    merge_thread_local_bigvals();
 
     // 3. walk roots
     mark_roots(gc_cache, &sp);
@@ -2562,8 +3095,10 @@ JL_DLLEXPORT void jl_gc_collect(int full)
 void gc_mark_queue_all_roots(jl_ptls_t ptls, gc_mark_sp_t *sp)
 {
     jl_gc_mark_cache_t *gc_cache = &ptls->gc_cache;
-    for (size_t i = 0; i < jl_n_threads; i++)
-        jl_gc_queue_thread_local(gc_cache, sp, jl_all_tls_states[i]);
+    for (size_t i = 0; i < jl_n_threads; i++) {
+        jl_ptls_t ptls2 = jl_all_tls_states[i];
+        jl_gc_queue_thread_local(gc_cache, sp, ptls2, ptls == ptls2);
+    }
     mark_roots(gc_cache, sp);
 }
 
@@ -2614,9 +3149,14 @@ void jl_gc_init(void)
 {
     jl_gc_init_page();
     gc_debug_init();
-
     arraylist_new(&finalizer_list_marked, 0);
     arraylist_new(&to_finalize, 0);
+    xorshift_rng_state =
+        (uint64_t *) malloc_cache_align(sizeof(uint64_t) * jl_n_threads);
+    for (int i = 0; i < jl_n_threads; i++) {
+	/* random numbers should not overlap even for long-running programs */
+	xorshift_rng_state[i] = i + 1;
+    }
 
     gc_num.interval = default_collect_interval;
     last_long_collect_interval = default_collect_interval;
@@ -2799,7 +3339,7 @@ jl_value_t *jl_gc_realloc_string(jl_value_t *s, size_t sz)
     bigval_t *hdr = bigval_header(v);
     jl_ptls_t ptls = jl_get_ptls_states();
     maybe_collect(ptls); // don't want this to happen during jl_gc_managed_realloc
-    gc_big_object_unlink(hdr);
+    treap_delete(&ptls->heap.big_objects, hdr);
     // TODO: this is not safe since it frees the old pointer. ideally we'd like
     // the old pointer to be left alone if we can't grow in place.
     // for now it's up to the caller to make sure there are no references to the
@@ -2809,7 +3349,8 @@ jl_value_t *jl_gc_realloc_string(jl_value_t *s, size_t sz)
                                        1, s, 0);
     newbig->sz = allocsz;
     newbig->age = 0;
-    gc_big_object_link(newbig, &ptls->heap.big_objects);
+    newbig->prio = xorshift_rng(ptls);
+    treap_insert(&ptls->heap.big_objects, newbig);
     jl_value_t *snew = jl_valueof(&newbig->header);
     *(size_t*)snew = sz;
     return snew;

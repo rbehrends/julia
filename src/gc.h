@@ -212,19 +212,23 @@ typedef union {
 // layout for big (>2k) objects
 
 typedef struct _bigval_t {
-    struct _bigval_t *next;
-    struct _bigval_t **prev; // pointer to the next field of the prev entry
+    struct _bigval_t *left;
+    struct _bigval_t *right;
+#ifdef _P64 // Add padding so that the value is 64-byte aligned
+    // (8 pointers of 8 bytes each) - (4 other pointers in struct) -
+    // (size word)
+    uint64_t prio;
+    void *_padding[8 - 4 - 1];
+#else
+    // (16 pointers of 4 bytes each) - (4 other pointers in struct) -
+    // (double word size)
+    uint64_t prio;
+    void *_padding[16 - 4 - 2];
+#endif
     union {
         size_t sz;
         uintptr_t age : 2;
     };
-#ifdef _P64 // Add padding so that the value is 64-byte aligned
-    // (8 pointers of 8 bytes each) - (4 other pointers in struct)
-    void *_padding[8 - 4];
-#else
-    // (16 pointers of 4 bytes each) - (4 other pointers in struct)
-    void *_padding[16 - 4];
-#endif
     //struct jl_taggedvalue_t <>;
     union {
         uintptr_t header;
@@ -363,6 +367,7 @@ STATIC_INLINE unsigned ffs_u32(uint32_t bitvec)
 extern jl_gc_num_t gc_num;
 extern pagetable_t memory_map;
 extern bigval_t *big_objects_marked;
+extern bigval_t *big_objects_global;
 extern arraylist_t finalizer_list_marked;
 extern arraylist_t to_finalize;
 extern int64_t lazy_freed_pages;
@@ -461,23 +466,6 @@ STATIC_INLINE struct jl_gc_metadata_ext page_metadata_ext(void *_data)
     return info;
 }
 
-STATIC_INLINE void gc_big_object_unlink(const bigval_t *hdr)
-{
-    *hdr->prev = hdr->next;
-    if (hdr->next) {
-        hdr->next->prev = hdr->prev;
-    }
-}
-
-STATIC_INLINE void gc_big_object_link(bigval_t *hdr, bigval_t **list)
-{
-    hdr->next = *list;
-    hdr->prev = list;
-    if (*list)
-        (*list)->prev = &hdr->next;
-    *list = hdr;
-}
-
 STATIC_INLINE void gc_mark_sp_init(jl_gc_mark_cache_t *gc_cache, gc_mark_sp_t *sp)
 {
     sp->pc = gc_cache->pc_stack;
@@ -490,6 +478,7 @@ void gc_mark_queue_all_roots(jl_ptls_t ptls, gc_mark_sp_t *sp);
 void gc_mark_queue_finlist(jl_gc_mark_cache_t *gc_cache, gc_mark_sp_t *sp,
                            arraylist_t *list, size_t start);
 void gc_mark_loop(jl_ptls_t ptls, gc_mark_sp_t sp);
+
 void gc_debug_init(void);
 
 extern void *gc_mark_label_addrs[_GC_MARK_L_MAX];

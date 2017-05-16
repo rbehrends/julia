@@ -225,7 +225,7 @@ static void segv_handler(int sig, siginfo_t *info, void *context)
     if (jl_addr_is_safepoint((uintptr_t)info->si_addr)) {
         jl_unblock_signal(sig);
 #ifdef JULIA_ENABLE_THREADING
-        jl_set_gc_and_wait();
+        jl_suspend_thread_and_wait_for_gc(ptls);
         // Do not raise sigint on worker thread
         if (ptls->tid != 0)
             return;
