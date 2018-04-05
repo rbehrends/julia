@@ -1,11 +1,22 @@
 // This file is a part of Julia. License is MIT: https://julialang.org/license
 
 #include "gc.h"
+#include "gcext.h"
 #include "julia_assert.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// GC Extensions
+JL_DLLEXPORT void *(*jl_nonpool_alloc_hook)(size_t size);
+JL_DLLEXPORT void (*jl_nonpool_free_hook)(void *p);
+JL_DLLEXPORT void (*jl_root_scanner_hook)(int global);
+JL_DLLEXPORT void (*jl_task_root_scanner_hook)(jl_task_t *task,
+  int global);
+
+
+
 
 // Protect all access to `finalizer_list_marked` and `to_finalize`.
 // For accessing `ptls->finalizers`, the lock is needed if a thread
@@ -747,7 +758,9 @@ JL_DLLEXPORT jl_value_t *jl_gc_big_alloc(jl_ptls_t ptls, size_t sz)
     size_t allocsz = LLT_ALIGN(sz + offs, JL_CACHE_BYTE_ALIGNMENT);
     if (allocsz < sz)  // overflow in adding offs, size was "negative"
         jl_throw(jl_memory_exception);
-    bigval_t *v = (bigval_t*)malloc_cache_align(allocsz);
+    bigval_t *v = (jl_nonpool_alloc_hook)
+      ? (*jl_nonpool_alloc_hook)(allocsz)
+      : (bigval_t*)malloc_cache_align(allocsz);
     if (v == NULL)
         jl_throw(jl_memory_exception);
 #ifdef JULIA_ENABLE_THREADING
@@ -798,7 +811,10 @@ static bigval_t **sweep_big_list(int sweep_full, bigval_t **pv)
 #ifdef MEMDEBUG
             memset(v, 0xbb, v->sz&~3);
 #endif
-            jl_free_aligned(v);
+	    if (jl_nonpool_free_hook)
+	      (*jl_nonpool_free_hook)(v);
+	    else
+	      jl_free_aligned(v);
         }
         gc_time_count_big(old_bits, bits);
         v = nxt;
@@ -2617,6 +2633,7 @@ static int _jl_gc_collect(jl_ptls_t ptls, int full)
 
 JL_DLLEXPORT void jl_gc_collect(int full)
 {
+    if (jl_root_scanner_hook) (*jl_root_scanner_hook)(full);
     jl_ptls_t ptls = jl_get_ptls_states();
     if (jl_gc_disable_counter) {
         gc_num.deferred_alloc += (gc_num.allocd + gc_num.interval);
@@ -3048,6 +3065,59 @@ JL_DLLEXPORT jl_value_t *jl_gc_alloc_3w(void)
     jl_ptls_t ptls = jl_get_ptls_states();
     return jl_gc_alloc(ptls, sizeof(void*) * 3, NULL);
 }
+
+STATIC_INLINE int is_valid_tag(void *p)
+{
+    jl_gc_pagemeta_t *meta = page_metadata(p);
+    if (!meta)
+       return 0;
+    char *page = gc_page_data(p);
+    size_t off = (char *) p - page;
+    return ((off - GC_PAGE_OFFSET) % meta->osize == 0);
+}
+
+STATIC_INLINE int is_valid_pool_obj(jl_taggedvalue_t *val)
+{
+    jl_value_t *datatype_type = (jl_value_t *)jl_datatype_type;
+    if (val->next == NULL) return 0; // end of free list
+    if (gc_marked(val->bits.gc)) return 0; // already marked by GC
+    if (jl_valueof(val->next) == datatype_type) return 1; // a type
+    val = (jl_taggedvalue_t *) gc_ptr_clear_tag(val->next, 3);
+    if (!is_valid_tag(val)) return 0;
+    // We now follow the header link. This must be either part
+    // of the free list (including NULL) or a type reference.
+    if (val->next == NULL) return 0;
+    if (val->bits.gc != 0) return 1;
+    if (jl_valueof(val->next) == datatype_type) return 1;
+    return 0;
+}
+
+
+JL_DLLEXPORT jl_value_t * jl_pool_base_ptr(void *p)
+{
+    /* `p` can point just past the end of the object due
+     * to compiler optimizations. We decrement it by one
+     * byte; this means that the pointer will either lie
+     * within the tag or within the data. */
+    p = (char *) p - 1;
+    jl_gc_pagemeta_t *meta = page_metadata(p);
+    if (meta) {
+        char *page = gc_page_data(p);
+       // offset within page.
+       size_t off = (char *) p - page;
+       if (off < GC_PAGE_OFFSET) return NULL;
+       // offset within object
+       size_t off2 = (off - GC_PAGE_OFFSET);
+       size_t osize = meta->osize;
+       off2 %= osize;
+       if (off - off2 + osize > GC_PAGE_SZ) return NULL;
+       jl_taggedvalue_t *val = (jl_taggedvalue_t *)((char *)p - off2);
+       if (!is_valid_pool_obj(val)) return NULL;
+       return jl_valueof(val);
+    }
+    return NULL;
+}
+
 
 #ifdef __cplusplus
 }
