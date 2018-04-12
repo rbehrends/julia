@@ -2238,7 +2238,7 @@ mark: {
                 obj16 = (gc_mark_obj16_t*)sp.data;
                 goto obj16_loaded;
             }
-            else {
+            else if (layout->fielddesc_type == 2) {
                 // This is very uncommon
                 // Do not do store to load forwarding to save some code size
                 assert(layout->fielddesc_type == 2);
@@ -2250,6 +2250,12 @@ mark: {
                 sp.data += sizeof(markdata);
                 goto obj32;
             }
+	    else {
+                assert(layout->fielddesc_type == 3);
+                jl_fielddescdyn_t *desc = (jl_fielddescdyn_t*)jl_dt_layout_fields(layout);
+		desc->markfunc(&ptls->gc_cache, &sp, new_obj);
+		goto pop;
+	    }
         }
     }
 }
@@ -3120,6 +3126,11 @@ JL_DLLEXPORT jl_value_t * jl_pool_base_ptr(void *p)
 JL_DLLEXPORT jl_ptls_t jl_extend_get_ptls_states()
 {
     return jl_get_ptls_states();
+}
+
+JL_DLLEXPORT void jl_extend_init(void)
+{
+    jl_init();
 }
 
 JL_DLLEXPORT void * jl_extend_gc_alloc(jl_ptls_t ptls, size_t sz, void *t)
