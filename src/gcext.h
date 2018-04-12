@@ -47,4 +47,8 @@ typedef struct {
   // jl_sweepfunc_t sweepfunc;
 } jl_fielddescdyn_t;
 
+JL_DLLEXPORT jl_ptls_t jl_extend_get_ptls_states(void);
+JL_DLLEXPORT void * jl_extend_gc_alloc(jl_ptls_t ptls, size_t sz, void *t);
+JL_DLLEXPORT void jl_extend_init(void);
+
 #endif // _JULIA_GCEXT_H
