@@ -3117,6 +3117,17 @@ JL_DLLEXPORT jl_value_t * jl_pool_base_ptr(void *p)
     return NULL;
 }
 
+JL_DLLEXPORT jl_ptls_t jl_extend_get_ptls_states()
+{
+    return jl_get_ptls_states();
+}
+
+JL_DLLEXPORT void * jl_extend_gc_alloc(jl_ptls_t ptls, size_t sz, void *t)
+{
+    return jl_gc_alloc(ptls, sz, t);
+}
+
+
 
 #ifdef __cplusplus
 }
