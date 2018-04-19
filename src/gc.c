@@ -1435,6 +1435,12 @@ STATIC_INLINE void gc_mark_stack_push(jl_gc_mark_cache_t *gc_cache, gc_mark_sp_t
     }
 }
 
+JL_DLLEXPORT void jl_gc_mark_stack_push(void *cache, void *sp, void *pc,
+                                        void *data, size_t datasize, int inc)
+{
+  gc_mark_stack_push(cache, sp, pc, data, datasize, inc);
+}
+
 // Check if the reference is non-NULL and atomically set the mark bit.
 // Update `*nptr`, which is the `nptr` field of the parent item, if the object is young.
 // Return the tag (with GC bits cleared) and the GC bits in `*ptag` and `*pbits`.
@@ -1504,6 +1510,11 @@ STATIC_INLINE int gc_mark_queue_obj(jl_gc_mark_cache_t *gc_cache, gc_mark_sp_t *
     gc_mark_stack_push(gc_cache, sp, gc_mark_label_addrs[GC_MARK_L_marked_obj],
                        &data, sizeof(data), 1);
     return (int)nptr;
+}
+
+JL_DLLEXPORT void jl_gc_mark_queue_obj(void *gc_cache, void *sp, void *obj)
+{
+   gc_mark_queue_obj(gc_cache, sp, obj);
 }
 
 // Check if `nptr` is tagged for `old + refyoung`,
