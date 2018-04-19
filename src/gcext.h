@@ -50,5 +50,10 @@ typedef struct {
 JL_DLLEXPORT jl_ptls_t jl_extend_get_ptls_states(void);
 JL_DLLEXPORT void * jl_extend_gc_alloc(jl_ptls_t ptls, size_t sz, void *t);
 JL_DLLEXPORT void jl_extend_init(void);
+JL_DLLEXPORT void jl_gc_mark_stack_push(void *cache, void *sp, void *pc,
+                                        void *data, size_t datasize, int inc);
+JL_DLLEXPORT void jl_gc_mark_queue_obj(void *gc_cache, void *sp, void *obj);
+
+
 
 #endif // _JULIA_GCEXT_H

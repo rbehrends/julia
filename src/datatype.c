@@ -11,6 +11,7 @@
 #include "julia.h"
 #include "julia_internal.h"
 #include "julia_assert.h"
+#include "gcext.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -480,6 +481,32 @@ JL_DLLEXPORT jl_datatype_t *jl_new_primitivetype(jl_value_t *name, jl_module_t *
     bt->layout = jl_get_layout(0, alignm, 0, NULL);
     bt->instance = NULL;
     return bt;
+}
+
+JL_DLLEXPORT jl_datatype_t * jl_new_foreign_type(jl_sym_t *name,
+                                                 jl_module_t *module,
+						 jl_datatype_t *super,
+						 jl_markfunc_t markfunc,
+						 jl_sweepfunc_t sweepfunc)
+{
+  jl_datatype_t *bt = jl_new_datatype(name, module, super,
+    jl_emptysvec, jl_emptysvec, jl_emptysvec, 0, 0, 0);
+  bt->size = 0;
+  jl_datatype_layout_t *layout =
+    jl_gc_perm_alloc(sizeof(jl_datatype_layout_t) + sizeof(jl_fielddescdyn_t),
+      0, 4, 0);
+  layout->nfields = 0;
+  layout->alignment = sizeof(void *);
+  layout->haspadding = 1;
+  layout->npointers = 0;
+  layout->fielddesc_type = 3;
+  jl_fielddescdyn_t * desc =
+    (jl_fielddescdyn_t *) ((char *)layout + sizeof(*layout));
+  desc->markfunc = markfunc;
+  // sweepfunc is currently unused
+  bt->layout = layout;
+  bt->instance = NULL;
+  return bt;
 }
 
 // bits constructors ----------------------------------------------------------
