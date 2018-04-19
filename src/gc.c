@@ -3118,7 +3118,7 @@ JL_DLLEXPORT jl_value_t * jl_pool_base_ptr(void *p)
      * within the tag or within the data. */
     p = (char *) p - 1;
     jl_gc_pagemeta_t *meta = page_metadata(p);
-    if (meta) {
+    if (meta && meta->ages) {
         char *page = gc_page_data(p);
        // offset within page.
        size_t off = (char *) p - page;
@@ -3126,6 +3126,7 @@ JL_DLLEXPORT jl_value_t * jl_pool_base_ptr(void *p)
        // offset within object
        size_t off2 = (off - GC_PAGE_OFFSET);
        size_t osize = meta->osize;
+       // if (osize == 0) return NULL;
        off2 %= osize;
        if (off - off2 + osize > GC_PAGE_SZ) return NULL;
        jl_taggedvalue_t *val = (jl_taggedvalue_t *)((char *)p - off2);
