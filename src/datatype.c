@@ -541,7 +541,7 @@ JL_DLLEXPORT jl_datatype_t * jl_new_foreign_type(jl_sym_t *name,
   layout->nfields = 0;
   layout->alignment = sizeof(void *);
   layout->haspadding = 1;
-  layout->npointers = 0;
+  layout->npointers = 1;
   layout->fielddesc_type = 3;
   jl_fielddescdyn_t * desc =
     (jl_fielddescdyn_t *) ((char *)layout + sizeof(*layout));
