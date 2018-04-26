@@ -11,7 +11,7 @@ extern "C" {
 // GC Extensions
 JL_DLLEXPORT void *(*jl_nonpool_alloc_hook)(size_t size);
 JL_DLLEXPORT void (*jl_nonpool_free_hook)(void *p);
-JL_DLLEXPORT void (*jl_root_scanner_hook)(int global);
+JL_DLLEXPORT void (*jl_root_scanner_hook)(int global, void *cache, void *sp);
 JL_DLLEXPORT void (*jl_task_root_scanner_hook)(jl_task_t *task,
   int global);
 
@@ -2511,6 +2511,7 @@ static int _jl_gc_collect(jl_ptls_t ptls, int full)
 
     // 3. walk roots
     mark_roots(gc_cache, &sp);
+    if (jl_root_scanner_hook) (*jl_root_scanner_hook)(full, gc_cache, &sp);
     gc_mark_loop(ptls, sp);
     gc_mark_sp_init(gc_cache, &sp);
     gc_num.since_sweep += gc_num.allocd + (int64_t)gc_num.interval;
@@ -2650,7 +2651,6 @@ static int _jl_gc_collect(jl_ptls_t ptls, int full)
 
 JL_DLLEXPORT void jl_gc_collect(int full)
 {
-    if (jl_root_scanner_hook) (*jl_root_scanner_hook)(full);
     jl_ptls_t ptls = jl_get_ptls_states();
     if (jl_gc_disable_counter) {
         gc_num.deferred_alloc += (gc_num.allocd + gc_num.interval);
