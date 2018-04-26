@@ -4,7 +4,8 @@
 // requires including "julia.h" beforehand.
 
 // Invoke this function whenever a garbage collection starts
-JL_DLLEXPORT extern void (*jl_root_scanner_hook)(int global);
+JL_DLLEXPORT extern void (*jl_root_scanner_hook)(int global, void * cache,
+  void *sp);
 
 // Invoke this function whenever a task is being scanned
 JL_DLLEXPORT extern void (*jl_task_root_scanner_hook)(jl_task_t *task,
