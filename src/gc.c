@@ -3085,26 +3085,28 @@ JL_DLLEXPORT jl_value_t *jl_gc_alloc_3w(void)
 STATIC_INLINE int is_valid_tag(void *p)
 {
     jl_gc_pagemeta_t *meta = page_metadata(p);
-    if (!meta)
+    if (!meta || !meta->ages)
        return 0;
     char *page = gc_page_data(p);
     size_t off = (char *) p - page;
-    return ((off - GC_PAGE_OFFSET) % meta->osize == 0);
+    off -= GC_PAGE_OFFSET;
+    return off % meta->osize == 0;
 }
 
 STATIC_INLINE int is_valid_pool_obj(jl_taggedvalue_t *val)
 {
     jl_value_t *datatype_type = (jl_value_t *)jl_datatype_type;
     if (val->next == NULL) return 0; // end of free list
-    if (gc_marked(val->bits.gc)) return 0; // already marked by GC
+    val = (jl_taggedvalue_t *) gc_ptr_clear_tag(val, 3);
     if (jl_valueof(val->next) == datatype_type) return 1; // a type
-    val = (jl_taggedvalue_t *) gc_ptr_clear_tag(val->next, 3);
+    jl_value_t *next = (jl_value_t *) gc_ptr_clear_tag(val->next, 3);
+    val = jl_astaggedvalue(next);
     if (!is_valid_tag(val)) return 0;
     // We now follow the header link. This must be either part
     // of the free list (including NULL) or a type reference.
     if (val->next == NULL) return 0;
-    if (val->bits.gc != 0) return 1;
-    if (jl_valueof(val->next) == datatype_type) return 1;
+    next = (jl_value_t *) gc_ptr_clear_tag(val->next, 3);
+    if (next == datatype_type) return 1;
     return 0;
 }
 
