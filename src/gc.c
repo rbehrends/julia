@@ -3136,6 +3136,11 @@ JL_DLLEXPORT jl_value_t * jl_pool_base_ptr(void *p)
     return NULL;
 }
 
+JL_DLLEXPORT size_t jl_extend_gc_max_pool_obj_size(void)
+{
+  return GC_MAX_SZCLASS;
+}
+
 JL_DLLEXPORT jl_ptls_t jl_extend_get_ptls_states()
 {
     return jl_get_ptls_states();
