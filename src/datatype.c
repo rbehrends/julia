@@ -487,18 +487,20 @@ JL_DLLEXPORT jl_datatype_t * jl_new_foreign_type(jl_sym_t *name,
                                                  jl_module_t *module,
 						 jl_datatype_t *super,
 						 jl_markfunc_t markfunc,
-						 jl_sweepfunc_t sweepfunc)
+						 jl_sweepfunc_t sweepfunc,
+						 int haspointers,
+						 int large)
 {
   jl_datatype_t *bt = jl_new_datatype(name, module, super,
     jl_emptysvec, jl_emptysvec, jl_emptysvec, 0, 0, 0);
-  bt->size = 0;
+  bt->size = large ? GC_MAX_SZCLASS+1 : 0;
   jl_datatype_layout_t *layout =
     jl_gc_perm_alloc(sizeof(jl_datatype_layout_t) + sizeof(jl_fielddescdyn_t),
       0, 4, 0);
   layout->nfields = 0;
   layout->alignment = sizeof(void *);
   layout->haspadding = 1;
-  layout->npointers = 1;
+  layout->npointers = haspointers;
   layout->fielddesc_type = 3;
   jl_fielddescdyn_t * desc =
     (jl_fielddescdyn_t *) ((char *)layout + sizeof(*layout));

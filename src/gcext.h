@@ -29,8 +29,13 @@ JL_DLLEXPORT jl_datatype_t *jl_new_foreign_type(
   jl_module_t *module,
   jl_datatype_t *super,
   jl_markfunc_t markfunc,
-  jl_sweepfunc_t sweepfunc
+  jl_sweepfunc_t sweepfunc,
+  int haspointers,
+  int large
 );
+
+JL_DLLEXPORT size_t jl_extend_gc_max_pool_obj_size(void);
+
 
 // Returns the base address of a memory block, assuming it
 // is stored in a julia memory pool. Return NULL otherwise.
