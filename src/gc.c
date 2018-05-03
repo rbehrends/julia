@@ -2678,9 +2678,9 @@ JL_DLLEXPORT void jl_gc_collect(int full)
     if (!jl_gc_disable_counter) {
         JL_LOCK_NOGC(&finalizers_lock);
         if (_jl_gc_collect(ptls, full)) {
-            int ret = _jl_gc_collect(ptls, 0);
+            int ret = _jl_gc_collect(ptls, jl_gc_disable_generational);
             (void)ret;
-            assert(!ret);
+            if (!jl_gc_disable_generational) assert(!ret);
         }
         JL_UNLOCK_NOGC(&finalizers_lock);
     }
