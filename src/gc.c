@@ -12,10 +12,10 @@ extern "C" {
 JL_DLLEXPORT void *(*jl_nonpool_alloc_hook)(size_t size);
 JL_DLLEXPORT void (*jl_nonpool_free_hook)(void *p);
 JL_DLLEXPORT void (*jl_root_scanner_hook)(int global, void *cache, void *sp);
+JL_DLLEXPORT void (*jl_post_gc_hook)(int global);
 JL_DLLEXPORT void (*jl_task_root_scanner_hook)(jl_task_t *task,
   int global);
-
-
+int jl_gc_disable_generational;
 
 
 // Protect all access to `finalizer_list_marked` and `to_finalize`.
@@ -2650,6 +2650,7 @@ static int _jl_gc_collect(jl_ptls_t ptls, int full)
 
 JL_DLLEXPORT void jl_gc_collect(int full)
 {
+    if (jl_gc_disable_generational && !full) return;
     jl_ptls_t ptls = jl_get_ptls_states();
     if (jl_gc_disable_counter) {
         gc_num.deferred_alloc += (gc_num.allocd + gc_num.interval);
@@ -2697,6 +2698,7 @@ JL_DLLEXPORT void jl_gc_collect(int full)
         run_finalizers(ptls);
         ptls->in_finalizer = was_in_finalizer;
     }
+    if (jl_post_gc_hook) (*jl_post_gc_hook)(full);
 }
 
 void gc_mark_queue_all_roots(jl_ptls_t ptls, gc_mark_sp_t *sp)
