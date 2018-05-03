@@ -7,6 +7,13 @@
 JL_DLLEXPORT extern void (*jl_root_scanner_hook)(int global, void * cache,
   void *sp);
 
+// Invoke this function whenever a garbage collection ends
+JL_DLLEXPORT extern void (*jl_post_gc_hook)(int global);
+
+// Disable generational GC
+JL_DLLEXPORT extern int jl_gc_disable_generational;
+
+
 // Invoke this function whenever a task is being scanned
 JL_DLLEXPORT extern void (*jl_task_root_scanner_hook)(jl_task_t *task,
   int global);
