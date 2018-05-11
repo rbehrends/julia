@@ -65,8 +65,9 @@ JL_DLLEXPORT void * jl_extend_gc_alloc(jl_ptls_t ptls, size_t sz, void *t);
 JL_DLLEXPORT void jl_extend_init(void);
 JL_DLLEXPORT void jl_gc_mark_stack_push(void *cache, void *sp, void *pc,
                                         void *data, size_t datasize, int inc);
-JL_DLLEXPORT void jl_gc_mark_queue_obj(void *gc_cache, void *sp, void *obj);
+JL_DLLEXPORT int jl_gc_mark_queue_obj(void *gc_cache, void *sp, void *obj);
 
-
+JL_DLLEXPORT void jl_gc_mark_push_remset(jl_ptls_t ptls, void *obj,
+  uintptr_t nptr);
 
 #endif // _JULIA_GCEXT_H
