@@ -758,9 +758,9 @@ JL_DLLEXPORT jl_value_t *jl_gc_big_alloc(jl_ptls_t ptls, size_t sz)
     size_t allocsz = LLT_ALIGN(sz + offs, JL_CACHE_BYTE_ALIGNMENT);
     if (allocsz < sz)  // overflow in adding offs, size was "negative"
         jl_throw(jl_memory_exception);
-    bigval_t *v = (jl_nonpool_alloc_hook)
+    bigval_t *v = (bigval_t *)((jl_nonpool_alloc_hook)
       ? (*jl_nonpool_alloc_hook)(allocsz)
-      : (bigval_t*)malloc_cache_align(allocsz);
+      : (bigval_t*)malloc_cache_align(allocsz));
     if (v == NULL)
         jl_throw(jl_memory_exception);
 #ifdef JULIA_ENABLE_THREADING
@@ -1438,7 +1438,8 @@ STATIC_INLINE void gc_mark_stack_push(jl_gc_mark_cache_t *gc_cache, gc_mark_sp_t
 JL_DLLEXPORT void jl_gc_mark_stack_push(void *cache, void *sp, void *pc,
                                         void *data, size_t datasize, int inc)
 {
-  gc_mark_stack_push(cache, sp, pc, data, datasize, inc);
+  gc_mark_stack_push((jl_gc_mark_cache_t *)cache, (gc_mark_sp_t *)sp,
+    pc, data, datasize, inc);
 }
 
 // Check if the reference is non-NULL and atomically set the mark bit.
@@ -1514,7 +1515,8 @@ STATIC_INLINE int gc_mark_queue_obj(jl_gc_mark_cache_t *gc_cache, gc_mark_sp_t *
 
 JL_DLLEXPORT int jl_gc_mark_queue_obj(void *gc_cache, void *sp, void *obj)
 {
-   return gc_mark_queue_obj(gc_cache, sp, obj);
+   return gc_mark_queue_obj((jl_gc_mark_cache_t *)gc_cache,
+     (gc_mark_sp_t *)sp, obj);
 }
 
 // Check if `nptr` is tagged for `old + refyoung`,
@@ -1537,7 +1539,7 @@ STATIC_INLINE void gc_mark_push_remset(jl_ptls_t ptls, jl_value_t *obj, uintptr_
 
 JL_DLLEXPORT void jl_gc_mark_push_remset(jl_ptls_t ptls, void *obj, uintptr_t nptr)
 {
-    gc_mark_push_remset(ptls, obj, nptr * 4 + 3);
+    gc_mark_push_remset(ptls, (jl_value_t *) obj, nptr * 4 + 3);
 }
 
 // Scan a dense array of object references, see `gc_mark_objarray_t`
@@ -3150,7 +3152,7 @@ JL_DLLEXPORT size_t jl_extend_gc_max_pool_obj_size(void)
   return GC_MAX_SZCLASS;
 }
 
-JL_DLLEXPORT jl_ptls_t jl_extend_get_ptls_states()
+JL_DLLEXPORT jl_ptls_t jl_extend_get_ptls_states(void)
 {
     return jl_get_ptls_states();
 }
