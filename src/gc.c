@@ -1535,7 +1535,7 @@ STATIC_INLINE void gc_mark_push_remset(jl_ptls_t ptls, jl_value_t *obj, uintptr_
     }
 }
 
-void jl_gc_mark_push_remset(jl_ptls_t ptls, void *obj, uintptr_t nptr)
+JL_DLLEXPORT void jl_gc_mark_push_remset(jl_ptls_t ptls, void *obj, uintptr_t nptr)
 {
     gc_mark_push_remset(ptls, obj, nptr * 4 + 3);
 }
