@@ -4,11 +4,11 @@
 // requires including "julia.h" beforehand.
 
 // Invoke this function whenever a garbage collection starts
-JL_DLLEXPORT extern void (*jl_root_scanner_hook)(int global, void * cache,
+JL_DLLEXPORT extern void (*jl_root_scanner_hook)(int full, void * cache,
   void *sp);
 
 // Invoke this function whenever a garbage collection ends
-JL_DLLEXPORT extern void (*jl_post_gc_hook)(int global);
+JL_DLLEXPORT extern void (*jl_post_gc_hook)(int full);
 
 // Disable generational GC
 JL_DLLEXPORT extern int jl_gc_disable_generational;
@@ -16,7 +16,7 @@ JL_DLLEXPORT extern int jl_gc_disable_generational;
 
 // Invoke this function whenever a task is being scanned
 JL_DLLEXPORT extern void (*jl_task_root_scanner_hook)(jl_task_t *task,
-  int global);
+  int full);
 
 
 // Invoke these functions to allocate `bigval_t` instances.
