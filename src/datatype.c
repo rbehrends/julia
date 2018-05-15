@@ -535,7 +535,7 @@ JL_DLLEXPORT jl_datatype_t * jl_new_foreign_type(jl_sym_t *name,
 						 int large)
 {
   jl_datatype_t *bt = jl_new_datatype(name, module, super,
-    jl_emptysvec, jl_emptysvec, jl_emptysvec, 0, 0, 0);
+    jl_emptysvec, jl_emptysvec, jl_emptysvec, 0, 1, 0);
   bt->size = large ? GC_MAX_SZCLASS+1 : 0;
   jl_datatype_layout_t *layout =
     jl_gc_perm_alloc(sizeof(jl_datatype_layout_t) + sizeof(jl_fielddescdyn_t),
