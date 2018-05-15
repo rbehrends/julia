@@ -811,10 +811,10 @@ static bigval_t **sweep_big_list(int sweep_full, bigval_t **pv)
 #ifdef MEMDEBUG
             memset(v, 0xbb, v->sz&~3);
 #endif
-	    if (jl_nonpool_free_hook)
-	      (*jl_nonpool_free_hook)(v);
-	    else
-	      jl_free_aligned(v);
+            if (jl_nonpool_free_hook)
+              (*jl_nonpool_free_hook)(v);
+            else
+              jl_free_aligned(v);
         }
         gc_time_count_big(old_bits, bits);
         v = nxt;
@@ -2268,12 +2268,12 @@ mark: {
                 sp.data = (jl_gc_mark_data_t *)(((char*)sp.data) + sizeof(markdata));
                 goto obj32;
             }
-	    else {
+            else {
                 assert(layout->fielddesc_type == 3);
                 jl_fielddescdyn_t *desc = (jl_fielddescdyn_t*)jl_dt_layout_fields(layout);
-		desc->markfunc(&ptls->gc_cache, &sp, new_obj);
-		goto pop;
-	    }
+                desc->markfunc(&ptls->gc_cache, &sp, new_obj);
+                goto pop;
+            }
         }
     }
 }
@@ -3149,7 +3149,7 @@ JL_DLLEXPORT jl_value_t * jl_pool_base_ptr(void *p)
 
 JL_DLLEXPORT size_t jl_extend_gc_max_pool_obj_size(void)
 {
-  return GC_MAX_SZCLASS;
+    return GC_MAX_SZCLASS;
 }
 
 JL_DLLEXPORT jl_ptls_t jl_extend_get_ptls_states(void)
@@ -3166,7 +3166,6 @@ JL_DLLEXPORT void * jl_extend_gc_alloc(jl_ptls_t ptls, size_t sz, void *t)
 {
     return jl_gc_alloc(ptls, sz, t);
 }
-
 
 
 #ifdef __cplusplus
