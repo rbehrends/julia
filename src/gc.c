@@ -11,10 +11,10 @@ extern "C" {
 // GC Extensions
 JL_DLLEXPORT void *(*jl_nonpool_alloc_hook)(size_t size);
 JL_DLLEXPORT void (*jl_nonpool_free_hook)(void *p);
-JL_DLLEXPORT void (*jl_root_scanner_hook)(int global, void *cache, void *sp);
-JL_DLLEXPORT void (*jl_post_gc_hook)(int global);
+JL_DLLEXPORT void (*jl_root_scanner_hook)(int full, void *cache, void *sp);
+JL_DLLEXPORT void (*jl_post_gc_hook)(int full);
 JL_DLLEXPORT void (*jl_task_root_scanner_hook)(jl_task_t *task,
-  int global);
+  int full);
 int jl_gc_disable_generational;
 
 
