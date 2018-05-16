@@ -15,8 +15,8 @@ JL_DLLEXPORT extern int jl_gc_disable_generational;
 
 
 // Invoke this function whenever a task is being scanned
-JL_DLLEXPORT extern void (*jl_task_root_scanner_hook)(jl_task_t *task,
-  int full);
+JL_DLLEXPORT extern void (*jl_task_scanner_hook)(void *cache,
+  void *sp, jl_task_t *task, int root_task);
 
 
 // Invoke these functions to allocate `bigval_t` instances.

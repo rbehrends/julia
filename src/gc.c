@@ -13,8 +13,8 @@ JL_DLLEXPORT void *(*jl_nonpool_alloc_hook)(size_t size);
 JL_DLLEXPORT void (*jl_nonpool_free_hook)(void *p);
 JL_DLLEXPORT void (*jl_root_scanner_hook)(int full, void *cache, void *sp);
 JL_DLLEXPORT void (*jl_post_gc_hook)(int full);
-JL_DLLEXPORT void (*jl_task_root_scanner_hook)(jl_task_t *task,
-  int full);
+JL_DLLEXPORT void (*jl_task_scanner_hook)(void *cache, void *sp,
+  jl_task_t *task, int root_task);
 int jl_gc_disable_generational;
 
 
@@ -2158,6 +2158,9 @@ mark: {
             int stkbuf = (ta->stkbuf != (void*)(intptr_t)-1 && ta->stkbuf != NULL);
             int16_t tid = ta->tid;
             jl_ptls_t ptls2 = jl_all_tls_states[tid];
+	    if (jl_task_scanner_hook)
+		jl_task_scanner_hook(&ptls->gc_cache, &sp,
+		    ta, ta == ptls2->root_task);
             if (stkbuf) {
 #ifdef COPY_STACKS
                 gc_setmark_buf_(ptls, ta->stkbuf, bits, ta->bufsz);
