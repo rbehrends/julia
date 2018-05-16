@@ -120,7 +120,17 @@ static void run_finalizer(jl_ptls_t ptls, jl_value_t *o, jl_value_t *ff)
     JL_TRY {
         size_t last_age = jl_get_ptls_states()->world_age;
         jl_get_ptls_states()->world_age = jl_world_counter;
-        jl_apply(args, 2);
+        if (ff == jl_nothing) {
+            jl_datatype_t *dt = (jl_datatype_t*)jl_typeof(o);
+            const jl_datatype_layout_t *layout = dt->layout;
+            assert(layout->fielddesc_type == 3);
+            jl_fielddescdyn_t *desc = (jl_fielddescdyn_t*)jl_dt_layout_fields(layout);
+            assert(desc->finalizefunc != 0);
+            desc->finalizefunc(o);
+        }
+        else {
+            jl_apply(args, 2);
+        }
         jl_get_ptls_states()->world_age = last_age;
     }
     JL_CATCH {
@@ -3168,6 +3178,11 @@ JL_DLLEXPORT void jl_extend_init(void)
 JL_DLLEXPORT void * jl_extend_gc_alloc(jl_ptls_t ptls, size_t sz, void *t)
 {
     return jl_gc_alloc(ptls, sz, t);
+}
+
+JL_DLLEXPORT void jl_extend_gc_set_needs_finalizer(void *obj)
+{
+    jl_gc_add_finalizer((jl_value_t *)obj, jl_nothing);
 }
 
 

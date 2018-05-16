@@ -530,7 +530,7 @@ JL_DLLEXPORT jl_datatype_t * jl_new_foreign_type(jl_sym_t *name,
                                                  jl_module_t *module,
 						 jl_datatype_t *super,
 						 jl_markfunc_t markfunc,
-						 jl_sweepfunc_t sweepfunc,
+						 jl_finalizefunc_t finalizefunc,
 						 int haspointers,
 						 int large)
 {
@@ -548,7 +548,7 @@ JL_DLLEXPORT jl_datatype_t * jl_new_foreign_type(jl_sym_t *name,
   jl_fielddescdyn_t * desc =
     (jl_fielddescdyn_t *) ((char *)layout + sizeof(*layout));
   desc->markfunc = markfunc;
-  // sweepfunc is currently unused
+  desc->finalizefunc = finalizefunc;
   bt->layout = layout;
   bt->instance = NULL;
   return bt;
