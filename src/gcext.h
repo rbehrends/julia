@@ -4,19 +4,32 @@
 // requires including "julia.h" beforehand.
 
 // Invoke this function whenever a garbage collection starts
-JL_DLLEXPORT extern void (*jl_root_scanner_hook)(int full, void * cache,
-  void *sp);
+JL_DLLEXPORT extern void (*jl_root_scanner_hook)(int full);
+
+// Invoke this function whenever a garbage collection begins
+JL_DLLEXPORT extern void (*jl_pre_gc_hook)(int full);
 
 // Invoke this function whenever a garbage collection ends
 JL_DLLEXPORT extern void (*jl_post_gc_hook)(int full);
+
+// This function is called to set elements of the GC context
+JL_DLLEXPORT extern void (*jl_gc_set_context_hook)(int tid, int index,
+    void *data);
+
+// Size of the GC context in machine words
+#define JL_GC_CONTEXT_SIZE 3
+
+#define JL_GC_CONTEXT_TLS 0
+#define JL_GC_CONTEXT_CACHE 1
+#define JL_GC_CONTEXT_SP 2
 
 // Disable generational GC
 JL_DLLEXPORT extern int jl_gc_disable_generational;
 
 
 // Invoke this function whenever a task is being scanned
-JL_DLLEXPORT extern void (*jl_task_scanner_hook)(void *cache,
-  void *sp, jl_task_t *task, int root_task);
+JL_DLLEXPORT extern void (*jl_task_scanner_hook)(jl_task_t *task,
+  int root_task);
 
 
 // Invoke these functions to allocate `bigval_t` instances.
@@ -26,7 +39,7 @@ JL_DLLEXPORT extern void (*jl_nonpool_free_hook)(void *p);
 // Types for mark and finalize functions.
 // We make the cache and sp parameters opaque so that the internals
 // do not get exposed.
-typedef void (*jl_markfunc_t)(void *cache, void *sp, void *obj);
+typedef void (*jl_markfunc_t)(void *obj);
 typedef void (*jl_finalizefunc_t)(void *obj);
 
 // Function to create a new foreign type with custom
@@ -61,13 +74,11 @@ typedef struct {
 } jl_fielddescdyn_t;
 
 JL_DLLEXPORT jl_ptls_t jl_extend_get_ptls_states(void);
-JL_DLLEXPORT void * jl_extend_gc_alloc(jl_ptls_t ptls, size_t sz, void *t);
+JL_DLLEXPORT void * jl_extend_gc_alloc(void **context, size_t sz, void *t);
 JL_DLLEXPORT void jl_extend_init(void);
-JL_DLLEXPORT void jl_gc_mark_stack_push(void *cache, void *sp, void *pc,
-                                        void *data, size_t datasize, int inc);
-JL_DLLEXPORT int jl_gc_mark_queue_obj(void *gc_cache, void *sp, void *obj);
+JL_DLLEXPORT int jl_gc_mark_queue_obj(void **context, void *obj);
 
-JL_DLLEXPORT void jl_gc_mark_push_remset(jl_ptls_t ptls, void *obj,
+JL_DLLEXPORT void jl_gc_mark_push_remset(void **context, void *obj,
   uintptr_t nptr);
 
 JL_DLLEXPORT void jl_extend_gc_set_needs_finalizer(void *obj);
