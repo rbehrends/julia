@@ -23,20 +23,20 @@ JL_DLLEXPORT extern void (*jl_task_scanner_hook)(void *cache,
 JL_DLLEXPORT extern void *(*jl_nonpool_alloc_hook)(size_t size);
 JL_DLLEXPORT extern void (*jl_nonpool_free_hook)(void *p);
 
-// Types for mark and sweep functions.
+// Types for mark and finalize functions.
 // We make the cache and sp parameters opaque so that the internals
 // do not get exposed.
 typedef void (*jl_markfunc_t)(void *cache, void *sp, void *obj);
-typedef void (*jl_sweepfunc_t)(void *obj);
+typedef void (*jl_finalizefunc_t)(void *obj);
 
 // Function to create a new foreign type with custom
-// mark and sweep functions.
+// mark and finalize functions.
 JL_DLLEXPORT jl_datatype_t *jl_new_foreign_type(
   jl_sym_t *name,
   jl_module_t *module,
   jl_datatype_t *super,
   jl_markfunc_t markfunc,
-  jl_sweepfunc_t sweepfunc,
+  jl_finalizefunc_t finalizefunc,
   int haspointers,
   int large
 );
@@ -57,7 +57,7 @@ JL_DLLEXPORT jl_value_t *jl_pool_base_ptr(void *p);
 
 typedef struct {
   jl_markfunc_t markfunc;
-  // jl_sweepfunc_t sweepfunc;
+  jl_finalizefunc_t finalizefunc;
 } jl_fielddescdyn_t;
 
 JL_DLLEXPORT jl_ptls_t jl_extend_get_ptls_states(void);
@@ -69,5 +69,7 @@ JL_DLLEXPORT int jl_gc_mark_queue_obj(void *gc_cache, void *sp, void *obj);
 
 JL_DLLEXPORT void jl_gc_mark_push_remset(jl_ptls_t ptls, void *obj,
   uintptr_t nptr);
+
+JL_DLLEXPORT void jl_extend_gc_set_needs_finalizer(void *obj);
 
 #endif // _JULIA_GCEXT_H
