@@ -3153,7 +3153,7 @@ STATIC_INLINE int is_valid_pool_obj(jl_taggedvalue_t *val)
 }
 
 
-JL_DLLEXPORT jl_value_t * jl_pool_base_ptr(void *p)
+STATIC_INLINE jl_taggedvalue_t *gc_safe_taggedvalue(void *p)
 {
     /* `p` can point just past the end of the object due
      * to compiler optimizations. We decrement it by one
@@ -3173,10 +3173,22 @@ JL_DLLEXPORT jl_value_t * jl_pool_base_ptr(void *p)
        off2 %= osize;
        if (off - off2 + osize > GC_PAGE_SZ) return NULL;
        jl_taggedvalue_t *val = (jl_taggedvalue_t *)((char *)p - off2);
-       if (!is_valid_pool_obj(val)) return NULL;
-       return jl_valueof(val);
+       return val;
     }
     return NULL;
+}
+
+JL_DLLEXPORT jl_taggedvalue_t * jl_safe_astaggedvalue(jl_value_t *p)
+{
+    return gc_safe_taggedvalue(p);
+}
+
+JL_DLLEXPORT jl_value_t * jl_pool_base_ptr(void *p)
+{
+   jl_taggedvalue_t *val = gc_safe_taggedvalue(p);
+   if (!val) return NULL;
+   if (!is_valid_pool_obj(val)) return NULL;
+   return jl_valueof(val);
 }
 
 JL_DLLEXPORT size_t jl_extend_gc_max_pool_obj_size(void)

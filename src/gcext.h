@@ -61,6 +61,14 @@ JL_DLLEXPORT size_t jl_extend_gc_max_pool_obj_size(void);
 // is stored in a julia memory pool. Return NULL otherwise.
 JL_DLLEXPORT jl_value_t *jl_pool_base_ptr(void *p);
 
+// Same as jl_astaggedvalue(), except that it also guarantees
+// that it will point to valid memory or return NULL if it
+// doesn't. Furthermore, the tag will either be valid tag if
+// p refers to a live object or point to an address that isn't
+// one if it is invalid.
+JL_DLLEXPORT jl_taggedvalue_t *jl_safe_astaggedvalue(jl_value_t *p);
+
+
 // Field layout descriptor for custom types that do
 // not fit Julia layout conventions. This is associated with
 // jl_datatype_t instances where fielddesc_type == 3.
