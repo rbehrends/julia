@@ -1,22 +1,95 @@
 // This file is a part of Julia. License is MIT: https://julialang.org/license
 
 #include "gc.h"
-#include "gcext.h"
+#include "julia_gcext.h"
 #include "julia_assert.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// GC Extensions
-JL_DLLEXPORT void *(*jl_nonpool_alloc_hook)(size_t size);
-JL_DLLEXPORT void (*jl_nonpool_free_hook)(void *p);
-JL_DLLEXPORT void (*jl_root_scanner_hook)(int full);
-JL_DLLEXPORT void (*jl_pre_gc_hook)(int full);
-JL_DLLEXPORT void (*jl_post_gc_hook)(int full);
-JL_DLLEXPORT void (*jl_gc_set_context_hook)(int tid, int index, void *data);
-JL_DLLEXPORT void (*jl_task_scanner_hook)(jl_task_t *task, int root_task);
-int jl_gc_disable_generational;
+static jl_gc_root_scanner_hook_t jl_gc_root_scanner_hook;
+static jl_gc_task_scanner_hook_t jl_gc_task_scanner_hook;
+static jl_pre_gc_hook_t jl_pre_gc_hook;
+static jl_post_gc_hook_t jl_post_gc_hook;
+static jl_gc_context_hook_t jl_gc_context_hook;
+static jl_gc_external_obj_alloc_hook_t jl_gc_external_obj_alloc_hook;
+static jl_gc_external_obj_free_hook_t jl_gc_external_obj_free_hook;
+
+// Hook to invoke whenever a garbage collection starts
+JL_DLLEXPORT extern void jl_set_gc_root_scanner_hook(jl_gc_root_scanner_hook_t hook)
+{
+    jl_gc_root_scanner_hook = hook;
+}
+JL_DLLEXPORT extern jl_gc_root_scanner_hook_t jl_get_gc_root_scanner_hook()
+{
+    return jl_gc_root_scanner_hook;
+}
+
+// Hook to invoke whenever a garbage collection begins
+JL_DLLEXPORT extern void jl_set_pre_gc_hook(jl_pre_gc_hook_t hook)
+{
+    jl_pre_gc_hook = hook;
+}
+
+JL_DLLEXPORT extern jl_pre_gc_hook_t jl_get_pre_gc_hook()
+{
+    return jl_pre_gc_hook;
+}
+
+// Hook to invoke whenever a garbage collection ends
+JL_DLLEXPORT extern void jl_set_post_gc_hook(jl_post_gc_hook_t hook)
+{
+    jl_post_gc_hook = hook;
+}
+
+JL_DLLEXPORT extern jl_post_gc_hook_t jl_get_post_gc_hook()
+{
+    return jl_post_gc_hook;
+}
+
+// Hook to invoke whenever a task is being scanned
+JL_DLLEXPORT extern void jl_set_gc_task_scanner_hook(jl_gc_task_scanner_hook_t hook)
+{
+    jl_gc_task_scanner_hook = hook;
+}
+
+JL_DLLEXPORT extern jl_gc_task_scanner_hook_t jl_get_gc_task_scanner_hook()
+{
+    return jl_gc_task_scanner_hook;
+}
+
+// Hook to invoke for setting (parts of the) GC context
+JL_DLLEXPORT extern void jl_set_gc_context_hook(jl_gc_context_hook_t hook)
+{
+    jl_gc_context_hook = hook;
+}
+
+JL_DLLEXPORT extern jl_gc_context_hook_t jl_get_gc_context_hook()
+{
+    return jl_gc_context_hook;
+}
+
+// Hooks to invoke to allocate `bigval_t` instances.
+JL_DLLEXPORT extern void jl_set_gc_external_obj_alloc_hook(jl_gc_external_obj_alloc_hook_t hook)
+{
+    jl_gc_external_obj_alloc_hook = hook;
+}
+
+JL_DLLEXPORT extern jl_gc_external_obj_alloc_hook_t jl_get_gc_external_obj_alloc_hook()
+{
+    return jl_gc_external_obj_alloc_hook;
+}
+
+JL_DLLEXPORT extern void jl_set_gc_external_obj_free_hook(jl_gc_external_obj_free_hook_t hook)
+{
+    jl_gc_external_obj_free_hook = hook;
+}
+
+JL_DLLEXPORT extern jl_gc_external_obj_free_hook_t jl_get_gc_external_obj_free_hook()
+{
+    return jl_gc_external_obj_free_hook;
+}
 
 
 // Protect all access to `finalizer_list_marked` and `to_finalize`.
@@ -769,8 +842,8 @@ JL_DLLEXPORT jl_value_t *jl_gc_big_alloc(jl_ptls_t ptls, size_t sz)
     size_t allocsz = LLT_ALIGN(sz + offs, JL_CACHE_BYTE_ALIGNMENT);
     if (allocsz < sz)  // overflow in adding offs, size was "negative"
         jl_throw(jl_memory_exception);
-    bigval_t *v = (bigval_t *)((jl_nonpool_alloc_hook)
-      ? (*jl_nonpool_alloc_hook)(allocsz)
+    bigval_t *v = (bigval_t *)((jl_gc_external_obj_alloc_hook)
+      ? (*jl_gc_external_obj_alloc_hook)(allocsz)
       : (bigval_t*)malloc_cache_align(allocsz));
     if (v == NULL)
         jl_throw(jl_memory_exception);
@@ -822,8 +895,8 @@ static bigval_t **sweep_big_list(int sweep_full, bigval_t **pv)
 #ifdef MEMDEBUG
             memset(v, 0xbb, v->sz&~3);
 #endif
-            if (jl_nonpool_free_hook)
-              (*jl_nonpool_free_hook)(v);
+            if (jl_gc_external_obj_free_hook)
+              (*jl_gc_external_obj_free_hook)(v);
             else
               jl_free_aligned(v);
         }
@@ -1524,7 +1597,7 @@ STATIC_INLINE int gc_mark_queue_obj(jl_gc_mark_cache_t *gc_cache, gc_mark_sp_t *
     return (int)nptr;
 }
 
-JL_DLLEXPORT int jl_gc_mark_queue_obj(void **context, void *obj)
+JL_DLLEXPORT int jl_gc_mark_queue_obj(jl_gc_context_t *context, void *obj)
 {
    return gc_mark_queue_obj((jl_gc_mark_cache_t *)context[JL_GC_CONTEXT_CACHE],
      (gc_mark_sp_t *)context[JL_GC_CONTEXT_SP], obj);
@@ -1548,7 +1621,7 @@ STATIC_INLINE void gc_mark_push_remset(jl_ptls_t ptls, jl_value_t *obj, uintptr_
     }
 }
 
-JL_DLLEXPORT void jl_gc_mark_push_remset(void **context, void *obj, uintptr_t nptr)
+JL_DLLEXPORT void jl_gc_mark_push_remset(jl_gc_context_t *context, void *obj, uintptr_t nptr)
 {
     gc_mark_push_remset(context[JL_GC_CONTEXT_TLS],
         (jl_value_t *) obj, nptr * 4 + 3);
@@ -1803,10 +1876,10 @@ JL_EXTENSION NOINLINE void gc_mark_loop(jl_ptls_t ptls, gc_mark_sp_t sp)
         return;
     }
 
-    if (jl_gc_set_context_hook) {
-	(*jl_gc_set_context_hook)(ptls->tid, JL_GC_CONTEXT_CACHE,
+    if (jl_gc_context_hook) {
+	(*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_CACHE,
 	    &ptls->gc_cache);
-	(*jl_gc_set_context_hook)(ptls->tid, JL_GC_CONTEXT_SP, &sp);
+	(*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_SP, &sp);
     }
 
 
@@ -2177,8 +2250,8 @@ mark: {
             int stkbuf = (ta->stkbuf != (void*)(intptr_t)-1 && ta->stkbuf != NULL);
             int16_t tid = ta->tid;
             jl_ptls_t ptls2 = jl_all_tls_states[tid];
-	    if (jl_task_scanner_hook)
-		jl_task_scanner_hook(ta, ta == ptls2->root_task);
+	    if (jl_gc_task_scanner_hook)
+		jl_gc_task_scanner_hook(ta, ta == ptls2->root_task);
             if (stkbuf) {
 #ifdef COPY_STACKS
                 gc_setmark_buf_(ptls, ta->stkbuf, bits, ta->bufsz);
@@ -2520,9 +2593,9 @@ static int _jl_gc_collect(jl_ptls_t ptls, int full)
     gc_mark_sp_t sp;
     gc_mark_sp_init(gc_cache, &sp);
 
-    if (jl_gc_set_context_hook) {
-        (*jl_gc_set_context_hook)(ptls->tid, JL_GC_CONTEXT_CACHE, gc_cache);
-        (*jl_gc_set_context_hook)(ptls->tid, JL_GC_CONTEXT_SP, &sp);
+    if (jl_gc_context_hook) {
+        (*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_CACHE, gc_cache);
+        (*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_SP, &sp);
     }
 
     uint64_t t0 = jl_hrtime();
@@ -2544,7 +2617,7 @@ static int _jl_gc_collect(jl_ptls_t ptls, int full)
 
     // 3. walk roots
     mark_roots(gc_cache, &sp);
-    if (jl_root_scanner_hook) (*jl_root_scanner_hook)(full);
+    if (jl_gc_root_scanner_hook) (*jl_gc_root_scanner_hook)(full);
     gc_mark_loop(ptls, sp);
     gc_mark_sp_init(gc_cache, &sp);
     gc_num.since_sweep += gc_num.allocd + (int64_t)gc_num.interval;
@@ -2684,11 +2757,10 @@ static int _jl_gc_collect(jl_ptls_t ptls, int full)
 
 JL_DLLEXPORT void jl_gc_collect(int full)
 {
-    if (jl_gc_disable_generational && !full) return;
     if (jl_pre_gc_hook) ((*jl_pre_gc_hook)(full));
     jl_ptls_t ptls = jl_get_ptls_states();
-    if (jl_gc_set_context_hook)
-        (*jl_gc_set_context_hook)(ptls->tid, JL_GC_CONTEXT_TLS, ptls);
+    if (jl_gc_context_hook)
+        (*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_TLS, ptls);
     if (jl_gc_disable_counter) {
         gc_num.deferred_alloc += (gc_num.allocd + gc_num.interval);
         gc_num.allocd = -(int64_t)gc_num.interval;
@@ -2715,9 +2787,9 @@ JL_DLLEXPORT void jl_gc_collect(int full)
     if (!jl_gc_disable_counter) {
         JL_LOCK_NOGC(&finalizers_lock);
         if (_jl_gc_collect(ptls, full)) {
-            int ret = _jl_gc_collect(ptls, jl_gc_disable_generational);
+            int ret = _jl_gc_collect(ptls, 0);
             (void)ret;
-            if (!jl_gc_disable_generational) assert(!ret);
+            assert(!ret);
         }
         JL_UNLOCK_NOGC(&finalizers_lock);
     }
@@ -2756,8 +2828,8 @@ JL_DLLEXPORT jl_value_t *(jl_gc_alloc)(jl_ptls_t ptls, size_t sz, void *ty)
 // Per-thread initialization
 void jl_init_thread_heap(jl_ptls_t ptls)
 {
-    if (jl_gc_set_context_hook) {
-	(*jl_gc_set_context_hook)(ptls->tid, JL_GC_CONTEXT_TLS, ptls);
+    if (jl_gc_context_hook) {
+	(*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_TLS, ptls);
     }
     jl_thread_heap_t *heap = &ptls->heap;
     jl_gc_pool_t *p = heap->norm_pools;
@@ -3153,7 +3225,7 @@ STATIC_INLINE int is_valid_pool_obj(jl_taggedvalue_t *val)
 }
 
 
-JL_DLLEXPORT int jl_is_internal_obj_alloc(jl_value_t *p)
+JL_DLLEXPORT int jl_gc_is_internal_obj_alloc(jl_value_t *p)
 {
     jl_gc_pagemeta_t* meta = page_metadata(p);
     if (meta && meta->ages) {
@@ -3176,7 +3248,7 @@ JL_DLLEXPORT int jl_is_internal_obj_alloc(jl_value_t *p)
     return 0;
 }
 
-JL_DLLEXPORT jl_value_t * jl_pool_base_ptr(void *p)
+JL_DLLEXPORT jl_value_t * jl_gc_internal_obj_base_ptr(void *p)
 {
     p = (char *) p - 1;
     jl_gc_pagemeta_t *meta = page_metadata(p);
@@ -3198,31 +3270,26 @@ JL_DLLEXPORT jl_value_t * jl_pool_base_ptr(void *p)
     return NULL;
 }
 
-JL_DLLEXPORT size_t jl_extend_gc_max_pool_obj_size(void)
+JL_DLLEXPORT size_t jl_gc_max_internal_obj_size(void)
 {
     return GC_MAX_SZCLASS;
-}
-
-JL_DLLEXPORT jl_ptls_t jl_extend_get_ptls_states(void)
-{
-    return jl_get_ptls_states();
 }
 
 JL_DLLEXPORT void jl_extend_init(void)
 {
     jl_init();
     jl_ptls_t ptls = jl_get_ptls_states();
-    if (jl_gc_set_context_hook) {
-	(*jl_gc_set_context_hook)(ptls->tid, JL_GC_CONTEXT_TLS, ptls);
+    if (jl_gc_context_hook) {
+	(*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_TLS, ptls);
     }
 }
 
-JL_DLLEXPORT void * jl_extend_gc_alloc(void **context, size_t sz, void *t)
+JL_DLLEXPORT void * jl_gc_alloc_typed(void **context, size_t sz, void *t)
 {
     return jl_gc_alloc(context[0], sz, t);
 }
 
-JL_DLLEXPORT void jl_extend_gc_set_needs_finalizer(void *obj)
+JL_DLLEXPORT void jl_gc_set_needs_foreign_finalizer(void *obj)
 {
     jl_gc_add_finalizer((jl_value_t *)obj, jl_nothing);
 }
