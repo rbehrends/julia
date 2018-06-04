@@ -11,7 +11,7 @@
 #include "julia.h"
 #include "julia_internal.h"
 #include "julia_assert.h"
-#include "gcext.h"
+#include "julia_gcext.h"
 
 #ifdef __cplusplus
 extern "C" {
