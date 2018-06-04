@@ -1877,9 +1877,9 @@ JL_EXTENSION NOINLINE void gc_mark_loop(jl_ptls_t ptls, gc_mark_sp_t sp)
     }
 
     if (jl_gc_context_hook) {
-	(*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_CACHE,
-	    &ptls->gc_cache);
-	(*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_SP, &sp);
+        (*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_CACHE,
+            &ptls->gc_cache);
+        (*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_SP, &sp);
     }
 
 
@@ -2250,8 +2250,8 @@ mark: {
             int stkbuf = (ta->stkbuf != (void*)(intptr_t)-1 && ta->stkbuf != NULL);
             int16_t tid = ta->tid;
             jl_ptls_t ptls2 = jl_all_tls_states[tid];
-	    if (jl_gc_task_scanner_hook)
-		jl_gc_task_scanner_hook(ta, ta == ptls2->root_task);
+            if (jl_gc_task_scanner_hook)
+                jl_gc_task_scanner_hook(ta, ta == ptls2->root_task);
             if (stkbuf) {
 #ifdef COPY_STACKS
                 gc_setmark_buf_(ptls, ta->stkbuf, bits, ta->bufsz);
@@ -2830,7 +2830,7 @@ JL_DLLEXPORT jl_value_t *(jl_gc_alloc)(jl_ptls_t ptls, size_t sz, void *ty)
 void jl_init_thread_heap(jl_ptls_t ptls)
 {
     if (jl_gc_context_hook) {
-	(*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_TLS, ptls);
+        (*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_TLS, ptls);
     }
     jl_thread_heap_t *heap = &ptls->heap;
     jl_gc_pool_t *p = heap->norm_pools;
@@ -3240,8 +3240,8 @@ JL_DLLEXPORT int jl_gc_is_internal_obj_alloc(jl_value_t *p)
         size_t osize = meta->osize;
         // if (osize == 0) return NULL;
         off2 %= osize;
-	if (off2 != sizeof(jl_taggedvalue_t))
-	    return 0;
+        if (off2 != sizeof(jl_taggedvalue_t))
+            return 0;
         if (off - off2 + osize > GC_PAGE_SZ)
             return 0;
         return 1;
@@ -3265,8 +3265,8 @@ JL_DLLEXPORT jl_value_t * jl_gc_internal_obj_base_ptr(void *p)
         off2 %= osize;
         if (off - off2 + osize > GC_PAGE_SZ) return NULL;
         jl_taggedvalue_t *val = (jl_taggedvalue_t *)((char *)p - off2);
-	if (!is_valid_pool_obj(val)) return NULL;
-	return jl_valueof(val);
+        if (!is_valid_pool_obj(val)) return NULL;
+        return jl_valueof(val);
     }
     return NULL;
 }
@@ -3281,7 +3281,7 @@ JL_DLLEXPORT void jl_extend_init(void)
     jl_init();
     jl_ptls_t ptls = jl_get_ptls_states();
     if (jl_gc_context_hook) {
-	(*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_TLS, ptls);
+        (*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_TLS, ptls);
     }
 }
 
