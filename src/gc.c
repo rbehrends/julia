@@ -1597,7 +1597,7 @@ STATIC_INLINE int gc_mark_queue_obj(jl_gc_mark_cache_t *gc_cache, gc_mark_sp_t *
     return (int)nptr;
 }
 
-JL_DLLEXPORT int jl_gc_mark_queue_obj(jl_gc_context_t *context, void *obj)
+JL_DLLEXPORT int jl_gc_mark_queue_obj(jl_gc_context_t *context, jl_value_t *obj)
 {
    return gc_mark_queue_obj((jl_gc_mark_cache_t *)context[JL_GC_CONTEXT_CACHE],
      (gc_mark_sp_t *)context[JL_GC_CONTEXT_SP], obj);
@@ -1621,7 +1621,7 @@ STATIC_INLINE void gc_mark_push_remset(jl_ptls_t ptls, jl_value_t *obj, uintptr_
     }
 }
 
-JL_DLLEXPORT void jl_gc_mark_push_remset(jl_gc_context_t *context, void *obj, uintptr_t nptr)
+JL_DLLEXPORT void jl_gc_mark_push_remset(jl_gc_context_t *context, jl_value_t *obj, uintptr_t nptr)
 {
     gc_mark_push_remset(context[JL_GC_CONTEXT_TLS],
         (jl_value_t *) obj, nptr * 4 + 3);
@@ -2366,7 +2366,7 @@ mark: {
                 assert(layout->fielddesc_type == 3);
                 jl_fielddescdyn_t *desc = (jl_fielddescdyn_t*)jl_dt_layout_fields(layout);
 
-                desc->markfunc(new_obj);
+                desc->markfunc(ptls->tid, new_obj);
                 goto pop;
             }
         }
@@ -3290,7 +3290,7 @@ JL_DLLEXPORT void * jl_gc_alloc_typed(void **context, size_t sz, void *t)
     return jl_gc_alloc(context[0], sz, t);
 }
 
-JL_DLLEXPORT void jl_gc_set_needs_foreign_finalizer(void *obj)
+JL_DLLEXPORT void jl_gc_set_needs_foreign_finalizer(jl_value_t *obj)
 {
     jl_gc_add_finalizer((jl_value_t *)obj, jl_nothing);
 }

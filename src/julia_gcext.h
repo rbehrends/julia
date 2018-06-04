@@ -51,8 +51,8 @@ JL_DLLEXPORT extern jl_gc_external_obj_free_hook_t jl_get_gc_external_obj_free_h
 // Types for mark and finalize functions.
 // We make the cache and sp parameters opaque so that the internals
 // do not get exposed.
-typedef void (*jl_markfunc_t)(void *obj);
-typedef void (*jl_finalizefunc_t)(void *obj);
+typedef void (*jl_markfunc_t)(int tid, jl_value_t *obj);
+typedef void (*jl_finalizefunc_t)(jl_value_t *obj);
 
 // Function to create a new foreign type with custom
 // mark and finalize functions.
@@ -95,10 +95,10 @@ typedef struct {
 
 JL_DLLEXPORT void * jl_gc_alloc_typed(jl_gc_context_t *context, size_t sz, void *ty);
 JL_DLLEXPORT void jl_extend_init(void);
-JL_DLLEXPORT int jl_gc_mark_queue_obj(jl_gc_context_t *context, void *obj);
-JL_DLLEXPORT void jl_gc_mark_push_remset(jl_gc_context_t *context, void *obj,
+JL_DLLEXPORT int jl_gc_mark_queue_obj(jl_gc_context_t *context, jl_value_t *obj);
+JL_DLLEXPORT void jl_gc_mark_push_remset(jl_gc_context_t *context, jl_value_t *obj,
   uintptr_t nptr);
 
-JL_DLLEXPORT void jl_gc_set_needs_foreign_finalizer(void *obj);
+JL_DLLEXPORT void jl_gc_set_needs_foreign_finalizer(jl_value_t *obj);
 
 #endif // _JULIA_GCEXT_H
