@@ -3276,15 +3276,6 @@ JL_DLLEXPORT size_t jl_gc_max_internal_obj_size(void)
     return GC_MAX_SZCLASS;
 }
 
-JL_DLLEXPORT void jl_extend_init(void)
-{
-    jl_init();
-    jl_ptls_t ptls = jl_get_ptls_states();
-    if (jl_gc_context_hook) {
-        (*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_TLS, ptls);
-    }
-}
-
 JL_DLLEXPORT void * jl_gc_alloc_typed(void **context, size_t sz, void *t)
 {
     return jl_gc_alloc(context[0], sz, t);
@@ -3293,6 +3284,13 @@ JL_DLLEXPORT void * jl_gc_alloc_typed(void **context, size_t sz, void *t)
 JL_DLLEXPORT void jl_gc_set_needs_foreign_finalizer(jl_value_t *obj)
 {
     jl_gc_add_finalizer((jl_value_t *)obj, jl_nothing);
+}
+
+JL_DLLEXPORT void jl_init_gc_context() {
+    jl_ptls_t ptls = jl_get_ptls_states();
+    if (jl_gc_context_hook) {
+        (*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_TLS, ptls);
+    }
 }
 
 

@@ -94,11 +94,11 @@ typedef struct {
 } jl_fielddescdyn_t;
 
 JL_DLLEXPORT void * jl_gc_alloc_typed(jl_gc_context_t *context, size_t sz, void *ty);
-JL_DLLEXPORT void jl_extend_init(void);
 JL_DLLEXPORT int jl_gc_mark_queue_obj(jl_gc_context_t *context, jl_value_t *obj);
 JL_DLLEXPORT void jl_gc_mark_push_remset(jl_gc_context_t *context, jl_value_t *obj,
   uintptr_t nptr);
 
 JL_DLLEXPORT void jl_gc_set_needs_foreign_finalizer(jl_value_t *obj);
+JL_DLLEXPORT void jl_init_gc_context(void);
 
 #endif // _JULIA_GCEXT_H
