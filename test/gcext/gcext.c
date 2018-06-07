@@ -392,23 +392,20 @@ int gc_old(jl_value_t *p) {
   return (jl_astaggedvalue(p)->bits.gc & 2) != 0;
 }
 
-void mark_stack(int tid, jl_value_t *p) {
+uintptr_t mark_stack(int tid, jl_value_t *p) {
   if (!*(void **)p)
-    return;
-  if (jl_gc_mark_queue_obj(context, *(jl_value_t **)p) && gc_old(p))
-    jl_gc_mark_push_remset(context, p, 1);
-  
+    return 0;
+  return jl_gc_mark_queue_obj(context, *(jl_value_t **)p) != 0;
 }
 
-void mark_stack_data(int tid, jl_value_t *p) {
+uintptr_t mark_stack_data(int tid, jl_value_t *p) {
   stack *stk = (stack *)p;
-  size_t youngref = 0;
+  uintptr_t n = 0;
   for (size_t i = 0; i < stk->size; i++) {
     if (jl_gc_mark_queue_obj(context, stk->data[i]))
-      youngref++;
+      n++;
   }
-  if (youngref && gc_old(p))
-    jl_gc_mark_push_remset(context, p, youngref);
+  return n;
 }
 
 jl_value_t *checked_eval_string(const char* code)

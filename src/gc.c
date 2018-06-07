@@ -2366,7 +2366,10 @@ mark: {
                 assert(layout->fielddesc_type == 3);
                 jl_fielddescdyn_t *desc = (jl_fielddescdyn_t*)jl_dt_layout_fields(layout);
 
-                desc->markfunc(ptls->tid, new_obj);
+		int old = jl_astaggedvalue(new_obj)->bits.gc & 2;
+                uintptr_t young = desc->markfunc(ptls->tid, new_obj);
+		if (old && young)
+		    gc_mark_push_remset(ptls, new_obj, young * 4 + 3);
                 goto pop;
             }
         }

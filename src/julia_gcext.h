@@ -51,7 +51,7 @@ JL_DLLEXPORT extern jl_gc_external_obj_free_hook_t jl_get_gc_external_obj_free_h
 // Types for mark and finalize functions.
 // We make the cache and sp parameters opaque so that the internals
 // do not get exposed.
-typedef void (*jl_markfunc_t)(int tid, jl_value_t *obj);
+typedef uintptr_t (*jl_markfunc_t)(int tid, jl_value_t *obj);
 typedef void (*jl_finalizefunc_t)(jl_value_t *obj);
 
 // Function to create a new foreign type with custom
