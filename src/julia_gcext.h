@@ -67,6 +67,7 @@ JL_DLLEXPORT jl_datatype_t *jl_new_foreign_type(
 );
 
 JL_DLLEXPORT size_t jl_gc_max_internal_obj_size(void);
+JL_DLLEXPORT size_t jl_gc_external_obj_hdr_size(void);
 
 
 // Returns the base address of a memory block, assuming it
