@@ -3252,6 +3252,16 @@ JL_DLLEXPORT int jl_gc_is_internal_obj_alloc(jl_value_t *p)
     return 0;
 }
 
+JL_DLLEXPORT size_t jl_gc_alloc_size(jl_value_t *p) {
+    jl_gc_pagemeta_t* meta = page_metadata(p);
+    if (meta)
+        return meta->osize - sizeof(jl_taggedvalue_t);
+    else { // bigval
+        bigval_t *b = (bigval_t *)((char *) p - sizeof(bigval_t));
+        return b->sz;
+    }
+}
+
 JL_DLLEXPORT jl_value_t * jl_gc_internal_obj_base_ptr(void *p)
 {
     p = (char *) p - 1;

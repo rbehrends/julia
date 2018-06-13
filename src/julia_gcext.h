@@ -81,6 +81,10 @@ JL_DLLEXPORT jl_value_t *jl_gc_internal_obj_base_ptr(void *p);
 // to a live object or point to an address that isn't one if it is
 // invalid.
 JL_DLLEXPORT int jl_gc_is_internal_obj_alloc(jl_value_t *p);
+//
+// Returns the allocated size of a Julia object.
+JL_DLLEXPORT size_t jl_gc_alloc_size(jl_value_t *p);
+
 
 // Field layout descriptor for custom types that do
 // not fit Julia layout conventions. This is associated with
