@@ -1,6 +1,7 @@
 // This file is a part of Julia. License is MIT: https://julialang.org/license
 
 #include <stddef.h>
+#include <stdio.h>
 
 #include "julia.h"
 #include "julia_gcext.h"
@@ -57,6 +58,9 @@ static inline void * align_ptr(void * p)
     u &= ~(sizeof(p) - 1);
     return (void *)u;
 }
+
+// We use treaps -- a form of balanced trees -- to be able to
+// find allocations based on their address.
 
 typedef struct treap_t {
     struct treap_t *left, *right;
@@ -138,12 +142,12 @@ static inline void treap_rot_left(treap_t ** treap)
     *treap = r;
 }
 
-static void * treap_find(treap_t * treap, void * p)
+static treap_t * treap_find(treap_t * treap, void * p)
 {
     while (treap) {
         int c = test_bigval_range(treap, p);
         if (c == 0)
-            return treap->addr;
+            return treap;
         else if (c < 0)
             treap = L(treap);
         else
@@ -238,6 +242,8 @@ static uint64_t xorshift_rng(void)
 static treap_t * bigvals;
 static size_t bigval_startoffset;
 
+// Hooks to allocate and free external objects (bigval_t's).
+
 void * alloc_bigval(size_t size)
 {
     void * result = malloc(size);
@@ -257,6 +263,9 @@ void free_bigval(void * p)
         free(p);
     }
 }
+
+// Auxiliary roots. These serve no special purpose, except
+// allowing us to verify that root scanning works.
 
 #define NAUXROOTS 1024
 static jl_value_t *aux_roots[NAUXROOTS];
@@ -281,24 +290,54 @@ JL_DLLEXPORT size_t get_gc_counter(int full) {
     return gc_counter_inc;
 }
 
+static size_t finalizer_calls = 0;
+
+JL_DLLEXPORT size_t get_finalizer_calls() {
+  return finalizer_calls;
+}
+
+
+JL_DLLEXPORT int internal_obj_scan(jl_value_t *val) {
+  if (jl_gc_is_internal_obj_alloc(val)) {
+    if (jl_gc_internal_obj_base_ptr(val) != val) return 0;
+    size_t size = jl_gc_alloc_size(val);
+    char *addr = (char *)val;
+    for (size_t i = 0; i <= size; i++) {
+      if (jl_gc_internal_obj_base_ptr(addr+i) != val)
+        return 0;
+    }
+    return 1;
+  } else {
+    treap_t * node = treap_find(bigvals, val);
+    if (!node) return 0;
+    char *addr = node->addr;
+    if ((jl_value_t *)addr != val) return 0;
+    size_t size = node->size;
+    for (size_t i = 0; i <= size; i++) {
+      if (treap_find(bigvals, addr+i) != node) return 0;
+    }
+    return 1;
+  }
+}
+
 typedef struct
 {
   size_t size;
   size_t capacity;
   jl_value_t *data[1];
-} stack;
+} dynstack_t;
 
 static jl_datatype_t *datatype_stack_internal;
 static jl_datatype_t *datatype_stack_external;
 static jl_datatype_t *datatype_stack;
 static jl_gc_context_t context[JL_GC_CONTEXT_SIZE];
 
-stack *allocate_stack_mem(size_t capacity) {
-  size_t size = offsetof(stack, data) + capacity * sizeof(jl_value_t *);
+dynstack_t *allocate_stack_mem(size_t capacity) {
+  size_t size = offsetof(dynstack_t, data) + capacity * sizeof(jl_value_t *);
   jl_datatype_t *type = datatype_stack_internal;
   if (size > jl_gc_max_internal_obj_size())
     type = datatype_stack_external;
-  stack *result = (stack *) jl_gc_alloc_typed(context, size, type);
+  dynstack_t *result = (dynstack_t *) jl_gc_alloc_typed(context, size, type);
   result->size = 0;
   result->capacity = capacity;
   return result;
@@ -309,62 +348,90 @@ void check_stack(const char *name, jl_value_t *p) {
     return;
   jl_type_error(name, (jl_value_t *)datatype_stack, p);
 }
+
 void check_stack_notempty(const char *name, jl_value_t *p) {
   check_stack(name, p);
-  stack *stk = *(stack **) p;
+  dynstack_t *stk = *(dynstack_t **) p;
   if (stk->size == 0)
-    jl_errorf("%s: stack empty", name);
+    jl_errorf("%s: dynstack_t empty", name);
 }
 
+// Stacks use double indirection in order to be resizable.
+// The outer object is a single word containing a pointer to
+// a `dynstack_t`, which can contain a variable number of
+// Julia objects; the `capacity` field denotes the number of objects
+// that can be stored without resizing storage, the `size` field
+// denotes the actual number of objects. GC scanning should ignore
+// any storage past those.
+
+// Create a new stack object
 
 JL_DLLEXPORT jl_value_t * stk_make() {
   jl_value_t *hdr = jl_gc_alloc_typed(context, sizeof(jl_value_t *),
     datatype_stack);
   JL_GC_PUSH1(hdr);
-  *(stack **)hdr = NULL;
-  stack *stk = allocate_stack_mem(8);
-  *(stack **)hdr = stk;
+  *(dynstack_t **)hdr = NULL;
+  dynstack_t *stk = allocate_stack_mem(8);
+  *(dynstack_t **)hdr = stk;
+  jl_gc_set_needs_foreign_finalizer((jl_value_t *)(stk));
   JL_GC_POP();
   return hdr;
 }
 
+// Return a pointer to the inner `dynstack_t` struct.
+
+JL_DLLEXPORT jl_value_t * stk_blob(jl_value_t *s) {
+  return (jl_value_t *)(*(dynstack_t **)s);
+}
+
+// Push `v` on `s`.
+
 JL_DLLEXPORT void stk_push(jl_value_t *s, jl_value_t *v) {
   check_stack("push", s);
-  stack *stk = *(stack **) s;
+  dynstack_t *stk = *(dynstack_t **) s;
   if (stk->size < stk->capacity) {
     stk->data[stk->size++] = v;
     jl_gc_wb((jl_value_t *)stk, v);
   } else {
-    stack *newstk = allocate_stack_mem(stk->capacity * 3 / 2 + 1);
+    dynstack_t *newstk = allocate_stack_mem(stk->capacity * 3 / 2 + 1);
     newstk->size = stk->size;
     memcpy(newstk->data, stk->data, sizeof(jl_value_t *) * stk->size);
-    *(stack **)s = newstk;
+    *(dynstack_t **)s = newstk;
     newstk->data[newstk->size++] = v;
+    jl_gc_set_needs_foreign_finalizer((jl_value_t *)(newstk));
     jl_gc_wb_back((jl_value_t *)newstk);
     jl_gc_wb(s, (jl_value_t *) newstk);
   }
 }
 
+// Return top value from `s`. Raise error if not empty.
+
 JL_DLLEXPORT jl_value_t *stk_top(jl_value_t *s) {
   check_stack_notempty("top", s);
-  stack *stk = *(stack **) s;
+  dynstack_t *stk = *(dynstack_t **) s;
   return stk->data[stk->size-1];
 }
 
+// Pop a value from `s` and return it. Raise error if not empty.
+
 JL_DLLEXPORT jl_value_t *stk_pop(jl_value_t *s) {
   check_stack_notempty("pop", s);
-  stack *stk = *(stack **) s;
+  dynstack_t *stk = *(dynstack_t **) s;
   stk->size--;
   return stk->data[stk->size];
 }
 
+// Number of objects on the stack.
+
 JL_DLLEXPORT size_t stk_size(jl_value_t *s) {
   check_stack("empty", s);
-  stack *stk = *(stack **) s;
+  dynstack_t *stk = *(dynstack_t **) s;
   return stk->size;
 }
 
 static jl_module_t *module;
+
+// Mark auxiliary roots.
 
 void root_scanner(int full) {
   for (int i = 0; i < NAUXROOTS; i++) {
@@ -372,6 +439,11 @@ void root_scanner(int full) {
       jl_gc_mark_queue_obj(context, aux_roots[i]);
   }
 }
+
+// Hooks to run before and after GC.
+//
+// As a simple example, we only track counters for full
+// and partial collections.
 
 void pre_gc(int full) {
   if (full)
@@ -383,6 +455,8 @@ void pre_gc(int full) {
 void post_gc(int full) {
 }
 
+// The Julia context hooks.
+
 void set_context(int tid, int index, jl_gc_context_t value) {
   if (tid > 0) return;
   context[index] = value;
@@ -392,14 +466,19 @@ int gc_old(jl_value_t *p) {
   return (jl_astaggedvalue(p)->bits.gc & 2) != 0;
 }
 
+// Mark the outer stack object (containing only a pointer to the data).
+
 uintptr_t mark_stack(int tid, jl_value_t *p) {
   if (!*(void **)p)
     return 0;
   return jl_gc_mark_queue_obj(context, *(jl_value_t **)p) != 0;
 }
 
+// Mark the actual stack data.
+// This is used both for `StackData` and `StackDataLarge`.
+
 uintptr_t mark_stack_data(int tid, jl_value_t *p) {
-  stack *stk = (stack *)p;
+  dynstack_t *stk = (dynstack_t *)p;
   uintptr_t n = 0;
   for (size_t i = 0; i < stk->size; i++) {
     if (jl_gc_mark_queue_obj(context, stk->data[i]))
@@ -407,6 +486,15 @@ uintptr_t mark_stack_data(int tid, jl_value_t *p) {
   }
   return n;
 }
+
+void finalize_stack_data(jl_value_t *p) {
+  finalizer_calls++;
+  dynstack_t *stk = (dynstack_t *)p;
+  if (stk->size > stk->capacity)
+    jl_error("internal error during finalization");
+}
+
+// Safely execute Julia code
 
 jl_value_t *checked_eval_string(const char* code)
 {
@@ -425,6 +513,9 @@ jl_value_t *checked_eval_string(const char* code)
 }
 
 int main() {
+  // Install hooks. This should happen before `jl_init()` and
+  // before any GC is called.
+
   jl_set_gc_root_scanner_hook(root_scanner);
   jl_set_gc_external_obj_alloc_hook(alloc_bigval);
   jl_set_gc_external_obj_free_hook(free_bigval);
@@ -434,20 +525,24 @@ int main() {
 
   jl_init();
   jl_init_gc_context();
+  // Create module to store types in.
   module = jl_new_module(jl_symbol("TestGCExt"));
   module->parent = jl_main_module;
   jl_set_const(jl_main_module, jl_symbol("TestGCExt"), (jl_value_t *)module);
+  // Define Julia types for our stack implementation.
   datatype_stack = jl_new_foreign_type(jl_symbol("Stack"),
     module, jl_any_type, mark_stack, NULL, 1, 0);
   jl_set_const(module, jl_symbol("Stack"), (jl_value_t *) datatype_stack);
   datatype_stack_internal = jl_new_foreign_type(jl_symbol("StackData"),
-    module, jl_any_type, mark_stack_data, NULL, 1, 0);
+    module, jl_any_type, mark_stack_data, finalize_stack_data, 1, 0);
   jl_set_const(module, jl_symbol("StackData"),
     (jl_value_t *) datatype_stack_internal);
   datatype_stack_external = jl_new_foreign_type(jl_symbol("StackDataLarge"),
-    module, jl_any_type, mark_stack_data, NULL, 1, 1);
+    module, jl_any_type, mark_stack_data, finalize_stack_data, 1, 1);
   jl_set_const(module, jl_symbol("StackDataLarge"),
     (jl_value_t *) datatype_stack_external);
+  // Remember the offset of external objects
   bigval_startoffset = jl_gc_external_obj_hdr_size();
+  // Run the actual tests
   checked_eval_string("import LocalTest");
 }

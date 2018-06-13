@@ -20,6 +20,9 @@ module LocalTest
   function empty(stack :: Stack)
     return size(stack) == 0
   end
+  function blob(stack :: Stack)
+    return ccall(:stk_blob, Any, (Stack,), stack)
+  end
   function gc_counter_full()
     return ccall(:get_gc_counter, UInt, (Cint,), 1)
   end
@@ -29,21 +32,34 @@ module LocalTest
   function gc_counter()
     return gc_counter_full() + gc_counter_inc()
   end
+  function num_finalizer_calls()
+    return ccall(:get_finalizer_calls, UInt, ())
+  end
   function get_aux_root(n :: Int)
     return ccall(:get_aux_root, String, (UInt,), n)
   end
   function set_aux_root(n :: Int, x :: String)
     return ccall(:set_aux_root, Nothing, (UInt, String), n, x)
   end
+  function internal_obj_scan(p :: Any)
+    if ccall(:internal_obj_scan, Cint, (Any,), p) == 0
+      error("internal object scan failed")
+    end
+  end
 
-  set_aux_root(0, "Root scanner works.");
+  for i in 0:1000
+    set_aux_root(i, string(i))
+  end
   function test()
     local stack = make()
     for i in 1:100000
       push(stack, string(i))
+      internal_obj_scan(top(stack))
     end
     for i in 1:1000
       local stack2 = make()
+      internal_obj_scan(stack2)
+      internal_obj_scan(blob(stack2))
       while !empty(stack)
 	push(stack2, pop(stack))
       end
@@ -56,5 +72,10 @@ module LocalTest
   @time test()
   print(gc_counter_full(), " full collections.\n")
   print(gc_counter_inc(), " partial collections.\n")
-  print(get_aux_root(0), "\n")
+  print(num_finalizer_calls(), " finalizer calls.\n")
+  for i in 0:1000
+    if get_aux_root(i) != string(i)
+      error("auxiliary roots were corrupted")
+    end
+  end
 end
