@@ -45,7 +45,7 @@ $(BIN)/LocalModule.jl: $(SRCDIR)/LocalModule.jl
 	cp $< $@
 endif
 
-check: $(BIN)/gcext$(EXE) $(BIN)/LocalModule.jl
+check: $(BIN)/gcext$(EXE) $(BIN)/LocalTest.jl
 	$(JULIA) --depwarn=error $(SRCDIR)/gcext-test.jl $<
 	@echo SUCCESS
 

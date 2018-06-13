@@ -544,5 +544,15 @@ int main() {
   // Remember the offset of external objects
   bigval_startoffset = jl_gc_external_obj_hdr_size();
   // Run the actual tests
+  checked_eval_string(
+  "let dir = dirname(unsafe_string(Base.JLOptions().julia_bin))\n"
+  // disable the package manager
+  "    ENV[\"JULIA_PKGDIR\"] = joinpath(dir, \"disabled\")\n"
+  // locate files relative to the "embedding" executable
+  "    stdlib = filter(env -> startswith(Base.find_package(Base, \"Distributed\"), env), Base.load_path())[end]\n"
+  "    push!(empty!(LOAD_PATH), dir, stdlib)\n"
+  "end"
+  );
+
   checked_eval_string("import LocalTest");
 }

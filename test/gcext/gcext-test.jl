@@ -8,21 +8,31 @@ if Sys.iswindows()
     ENV["PATH"] = string(Sys.BINDIR, ";", ENV["PATH"])
 end
 
+function atleast(s, rx, n)
+    m = match(rx, s)
+    if m === nothing
+	return false
+    else
+        num = m[1]
+	return parse(UInt, num) >= n
+    end
+end
+
 @test length(ARGS) == 1
-@testset "embedding example" begin
+@testset "gcext example" begin
     out = Pipe()
     err = Pipe()
     p = run(pipeline(Cmd(ARGS), stdin=devnull, stdout=out, stderr=err), wait=false)
     close(out.in)
     close(err.in)
     out_task = @async readlines(out)
-    err = read(err, String)
-    @test err == "MethodError: no method matching this_function_has_no_methods()\n"
-    @test success(p)
+    err_task = @async readlines(err)
+    # @test success(p)
+    errlines = fetch(err_task)
     lines = fetch(out_task)
-    @test length(lines) == 10
-    @test parse(Float64, lines[1]) ≈ sqrt(2)
-    @test lines[8] == "called bar"
-    @test lines[9] == "calling new bar"
-    @test lines[10] == "      From worker 2:\tTaking over the world..."
+    @test length(errlines) == 0
+    @test length(lines) == 4
+    @test atleast(lines[2], r"([0-9]+) full collections", 10)
+    @test atleast(lines[3], r"([0-9]+) partial collections", 1)
+    @test atleast(lines[4], r"([0-9]+) finalizer calls", 1)
 end
