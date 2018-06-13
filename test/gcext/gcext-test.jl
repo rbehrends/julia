@@ -8,13 +8,13 @@ if Sys.iswindows()
     ENV["PATH"] = string(Sys.BINDIR, ";", ENV["PATH"])
 end
 
-function atleast(s, rx, n)
+function checknum(s, rx, cond)
     m = match(rx, s)
     if m === nothing
 	return false
     else
         num = m[1]
-	return parse(UInt, num) >= n
+	return cond(parse(UInt, num))
     end
 end
 
@@ -31,8 +31,12 @@ end
     errlines = fetch(err_task)
     lines = fetch(out_task)
     @test length(errlines) == 0
-    @test length(lines) == 4
-    @test atleast(lines[2], r"([0-9]+) full collections", 10)
-    @test atleast(lines[3], r"([0-9]+) partial collections", 1)
-    @test atleast(lines[4], r"([0-9]+) finalizer calls", 1)
+    @test length(lines) == 6
+    @test checknum(lines[2], r"([0-9]+) full collections", n -> n >= 10)
+    @test checknum(lines[3], r"([0-9]+) partial collections", n -> n > 0)
+    @test checknum(lines[4], r"([0-9]+) finalizer calls", n -> n > 0)
+    @test checknum(lines[5], r"([0-9]+) internal object scan failures",
+        n -> n == 0)
+    @test checknum(lines[6], r"([0-9]+) corrupted auxiliary roots",
+        n -> n == 0)
 end

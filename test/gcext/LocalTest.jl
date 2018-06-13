@@ -43,10 +43,11 @@ module LocalTest
   end
   function internal_obj_scan(p :: Any)
     if ccall(:internal_obj_scan, Cint, (Any,), p) == 0
-      error("internal object scan failed")
+      global internal_obj_scan_failures += 1
     end
   end
 
+  global internal_obj_scan_failures = 0
   for i in 0:1000
     set_aux_root(i, string(i))
   end
@@ -69,13 +70,16 @@ module LocalTest
       end
     end
   end
+  global corrupted_roots = 0
+  for i in 0:1000
+    if get_aux_root(i) != string(i)
+      global corrupted_roots += 1
+    end
+  end
   @time test()
   print(gc_counter_full(), " full collections.\n")
   print(gc_counter_inc(), " partial collections.\n")
   print(num_finalizer_calls(), " finalizer calls.\n")
-  for i in 0:1000
-    if get_aux_root(i) != string(i)
-      error("auxiliary roots were corrupted")
-    end
-  end
+  print(internal_obj_scan_failures, " internal object scan failures.\n")
+  print(corrupted_roots, " corrupted auxiliary roots.\n")
 end
