@@ -1621,12 +1621,6 @@ STATIC_INLINE void gc_mark_push_remset(jl_ptls_t ptls, jl_value_t *obj, uintptr_
     }
 }
 
-JL_DLLEXPORT void jl_gc_mark_push_remset(jl_gc_context_t *context, jl_value_t *obj, uintptr_t nptr)
-{
-    gc_mark_push_remset(context[JL_GC_CONTEXT_TLS],
-        (jl_value_t *) obj, nptr * 4 + 3);
-}
-
 // Scan a dense array of object references, see `gc_mark_objarray_t`
 STATIC_INLINE int gc_mark_scan_objarray(jl_ptls_t ptls, gc_mark_sp_t *sp,
                                         gc_mark_objarray_t *objary,
