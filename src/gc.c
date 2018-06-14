@@ -21,7 +21,7 @@ JL_DLLEXPORT extern void jl_set_gc_root_scanner_hook(jl_gc_root_scanner_hook_t h
 {
     jl_gc_root_scanner_hook = hook;
 }
-JL_DLLEXPORT extern jl_gc_root_scanner_hook_t jl_get_gc_root_scanner_hook()
+JL_DLLEXPORT extern jl_gc_root_scanner_hook_t jl_get_gc_root_scanner_hook(void)
 {
     return jl_gc_root_scanner_hook;
 }
@@ -32,7 +32,7 @@ JL_DLLEXPORT extern void jl_set_pre_gc_hook(jl_pre_gc_hook_t hook)
     jl_pre_gc_hook = hook;
 }
 
-JL_DLLEXPORT extern jl_pre_gc_hook_t jl_get_pre_gc_hook()
+JL_DLLEXPORT extern jl_pre_gc_hook_t jl_get_pre_gc_hook(void)
 {
     return jl_pre_gc_hook;
 }
@@ -43,7 +43,7 @@ JL_DLLEXPORT extern void jl_set_post_gc_hook(jl_post_gc_hook_t hook)
     jl_post_gc_hook = hook;
 }
 
-JL_DLLEXPORT extern jl_post_gc_hook_t jl_get_post_gc_hook()
+JL_DLLEXPORT extern jl_post_gc_hook_t jl_get_post_gc_hook(void)
 {
     return jl_post_gc_hook;
 }
@@ -54,7 +54,7 @@ JL_DLLEXPORT extern void jl_set_gc_task_scanner_hook(jl_gc_task_scanner_hook_t h
     jl_gc_task_scanner_hook = hook;
 }
 
-JL_DLLEXPORT extern jl_gc_task_scanner_hook_t jl_get_gc_task_scanner_hook()
+JL_DLLEXPORT extern jl_gc_task_scanner_hook_t jl_get_gc_task_scanner_hook(void)
 {
     return jl_gc_task_scanner_hook;
 }
@@ -65,7 +65,7 @@ JL_DLLEXPORT extern void jl_set_gc_context_hook(jl_gc_context_hook_t hook)
     jl_gc_context_hook = hook;
 }
 
-JL_DLLEXPORT extern jl_gc_context_hook_t jl_get_gc_context_hook()
+JL_DLLEXPORT extern jl_gc_context_hook_t jl_get_gc_context_hook(void)
 {
     return jl_gc_context_hook;
 }
@@ -76,7 +76,7 @@ JL_DLLEXPORT extern void jl_set_gc_external_obj_alloc_hook(jl_gc_external_obj_al
     jl_gc_external_obj_alloc_hook = hook;
 }
 
-JL_DLLEXPORT extern jl_gc_external_obj_alloc_hook_t jl_get_gc_external_obj_alloc_hook()
+JL_DLLEXPORT extern jl_gc_external_obj_alloc_hook_t jl_get_gc_external_obj_alloc_hook(void)
 {
     return jl_gc_external_obj_alloc_hook;
 }
@@ -86,7 +86,7 @@ JL_DLLEXPORT extern void jl_set_gc_external_obj_free_hook(jl_gc_external_obj_fre
     jl_gc_external_obj_free_hook = hook;
 }
 
-JL_DLLEXPORT extern jl_gc_external_obj_free_hook_t jl_get_gc_external_obj_free_hook()
+JL_DLLEXPORT extern jl_gc_external_obj_free_hook_t jl_get_gc_external_obj_free_hook(void)
 {
     return jl_gc_external_obj_free_hook;
 }
@@ -3299,7 +3299,7 @@ JL_DLLEXPORT void jl_gc_set_needs_foreign_finalizer(jl_value_t *obj)
     jl_gc_add_finalizer((jl_value_t *)obj, jl_nothing);
 }
 
-JL_DLLEXPORT void jl_init_gc_context() {
+JL_DLLEXPORT void jl_init_gc_context(void) {
     jl_ptls_t ptls = jl_get_ptls_states();
     if (jl_gc_context_hook) {
         (*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_TLS, ptls);
