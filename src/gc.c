@@ -3291,7 +3291,7 @@ JL_DLLEXPORT size_t jl_gc_external_obj_hdr_size(void)
 
 JL_DLLEXPORT void * jl_gc_alloc_typed(void **context, size_t sz, void *t)
 {
-    return jl_gc_alloc(context[JL_GC_CONTEXT_TLS], sz, t);
+    return jl_gc_alloc((jl_ptls_t)context[JL_GC_CONTEXT_TLS], sz, t);
 }
 
 JL_DLLEXPORT void jl_gc_set_needs_foreign_finalizer(jl_value_t *obj)
