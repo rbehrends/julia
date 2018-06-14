@@ -11,23 +11,24 @@ typedef void (*jl_post_gc_hook_t)(int full);
 typedef void (*jl_gc_context_hook_t)(int tid, int index, jl_gc_context_t ctx);
 
 
-// Hook to invoke whenever a garbage collection starts
+// Hook set by foreign code and invoked by Julia during a garbage collection
+// when walking the GC roots
 JL_DLLEXPORT extern void jl_set_gc_root_scanner_hook(jl_gc_root_scanner_hook_t hook);
 JL_DLLEXPORT extern jl_gc_root_scanner_hook_t jl_get_gc_root_scanner_hook(void);
 
-// Hook to invoke whenever a garbage collection begins
+// Hook set by foreign code and invoked by Julia whenever a garbage collection begins
 JL_DLLEXPORT extern void jl_set_pre_gc_hook(jl_pre_gc_hook_t hook);
 JL_DLLEXPORT extern jl_pre_gc_hook_t jl_get_pre_gc_hook(void);
 
-// Hook to invoke whenever a garbage collection ends
+// Hook set by foreign code and invoked by Julia whenever a garbage collection ends
 JL_DLLEXPORT extern void jl_set_post_gc_hook(jl_post_gc_hook_t hook);
 JL_DLLEXPORT extern jl_post_gc_hook_t jl_get_post_gc_hook(void);
 
-// Hook to invoke whenever a task is being scanned
+// Hook set by foreign code and invoked by Julia whenever a task is being scanned
 JL_DLLEXPORT extern void jl_set_gc_task_scanner_hook(jl_gc_task_scanner_hook_t hook);
 JL_DLLEXPORT extern jl_gc_task_scanner_hook_t jl_get_gc_task_scanner_hook(void);
 
-// Hook to invoke for setting (parts of the) GC context
+// Hook set by foreign code and invoked by Julia for setting (parts of the) GC context
 JL_DLLEXPORT extern void jl_set_gc_context_hook(jl_gc_context_hook_t hook);
 JL_DLLEXPORT extern jl_gc_context_hook_t jl_get_gc_context_hook(void);
 
