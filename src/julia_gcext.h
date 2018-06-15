@@ -3,12 +3,10 @@
 
 // requires including "julia.h" beforehand.
 
-typedef void *jl_gc_context_t;
 typedef void (*jl_gc_root_scanner_hook_t)(int full);
 typedef void (*jl_gc_task_scanner_hook_t)(jl_task_t *task, int full);
 typedef void (*jl_pre_gc_hook_t)(int full);
 typedef void (*jl_post_gc_hook_t)(int full);
-typedef void (*jl_gc_context_hook_t)(int tid, int index, jl_gc_context_t ctx);
 
 
 // Hook set by foreign code and invoked by Julia during a garbage collection
@@ -28,18 +26,6 @@ JL_DLLEXPORT extern jl_post_gc_hook_t jl_get_post_gc_hook(void);
 JL_DLLEXPORT extern void jl_set_gc_task_scanner_hook(jl_gc_task_scanner_hook_t hook);
 JL_DLLEXPORT extern jl_gc_task_scanner_hook_t jl_get_gc_task_scanner_hook(void);
 
-// Hook set by foreign code and invoked by Julia for setting (parts of the) GC context
-JL_DLLEXPORT extern void jl_set_gc_context_hook(jl_gc_context_hook_t hook);
-JL_DLLEXPORT extern jl_gc_context_hook_t jl_get_gc_context_hook(void);
-
-
-// Size of the GC context in machine words
-#define JL_GC_CONTEXT_SIZE 3
-
-#define JL_GC_CONTEXT_TLS 0
-#define JL_GC_CONTEXT_CACHE 1
-#define JL_GC_CONTEXT_SP 2
-
 typedef void *(*jl_gc_external_obj_alloc_hook_t)(size_t size);
 typedef void (*jl_gc_external_obj_free_hook_t)(void *addr);
 
@@ -52,7 +38,7 @@ JL_DLLEXPORT extern jl_gc_external_obj_free_hook_t jl_get_gc_external_obj_free_h
 // Types for mark and finalize functions.
 // We make the cache and sp parameters opaque so that the internals
 // do not get exposed.
-typedef uintptr_t (*jl_markfunc_t)(int tid, jl_value_t *obj);
+typedef uintptr_t (*jl_markfunc_t)(jl_ptls_t, jl_value_t *obj);
 typedef void (*jl_finalizefunc_t)(jl_value_t *obj);
 
 // Function to create a new foreign type with custom
@@ -99,10 +85,9 @@ typedef struct {
   jl_finalizefunc_t finalizefunc;
 } jl_fielddescdyn_t;
 
-JL_DLLEXPORT void * jl_gc_alloc_typed(jl_gc_context_t *context, size_t sz, void *ty);
-JL_DLLEXPORT int jl_gc_mark_queue_obj(jl_gc_context_t *context, jl_value_t *obj);
+JL_DLLEXPORT void * jl_gc_alloc_typed(jl_ptls_t ptls, size_t sz, void *ty);
+JL_DLLEXPORT int jl_gc_mark_queue_obj(jl_ptls_t ptls, jl_value_t *obj);
 
 JL_DLLEXPORT void jl_gc_set_needs_foreign_finalizer(jl_value_t *obj);
-JL_DLLEXPORT void jl_init_gc_context(void);
 
 #endif // _JULIA_GCEXT_H

@@ -12,9 +12,10 @@ static jl_gc_root_scanner_hook_t jl_gc_root_scanner_hook;
 static jl_gc_task_scanner_hook_t jl_gc_task_scanner_hook;
 static jl_pre_gc_hook_t jl_pre_gc_hook;
 static jl_post_gc_hook_t jl_post_gc_hook;
-static jl_gc_context_hook_t jl_gc_context_hook;
 static jl_gc_external_obj_alloc_hook_t jl_gc_external_obj_alloc_hook;
 static jl_gc_external_obj_free_hook_t jl_gc_external_obj_free_hook;
+
+static gc_mark_sp_t **gc_current_sp;
 
 // Hook to invoke whenever a garbage collection starts
 JL_DLLEXPORT extern void jl_set_gc_root_scanner_hook(jl_gc_root_scanner_hook_t hook)
@@ -57,17 +58,6 @@ JL_DLLEXPORT extern void jl_set_gc_task_scanner_hook(jl_gc_task_scanner_hook_t h
 JL_DLLEXPORT extern jl_gc_task_scanner_hook_t jl_get_gc_task_scanner_hook(void)
 {
     return jl_gc_task_scanner_hook;
-}
-
-// Hook to invoke for setting (parts of the) GC context
-JL_DLLEXPORT extern void jl_set_gc_context_hook(jl_gc_context_hook_t hook)
-{
-    jl_gc_context_hook = hook;
-}
-
-JL_DLLEXPORT extern jl_gc_context_hook_t jl_get_gc_context_hook(void)
-{
-    return jl_gc_context_hook;
 }
 
 // Hooks to invoke to allocate `bigval_t` instances.
@@ -1597,10 +1587,9 @@ STATIC_INLINE int gc_mark_queue_obj(jl_gc_mark_cache_t *gc_cache, gc_mark_sp_t *
     return (int)nptr;
 }
 
-JL_DLLEXPORT int jl_gc_mark_queue_obj(jl_gc_context_t *context, jl_value_t *obj)
+JL_DLLEXPORT int jl_gc_mark_queue_obj(jl_ptls_t ptls, jl_value_t *obj)
 {
-   return gc_mark_queue_obj((jl_gc_mark_cache_t *)context[JL_GC_CONTEXT_CACHE],
-     (gc_mark_sp_t *)context[JL_GC_CONTEXT_SP], obj);
+   return gc_mark_queue_obj(&ptls->gc_cache, gc_current_sp[ptls->tid], obj);
 }
 
 // Check if `nptr` is tagged for `old + refyoung`,
@@ -1870,11 +1859,7 @@ JL_EXTENSION NOINLINE void gc_mark_loop(jl_ptls_t ptls, gc_mark_sp_t sp)
         return;
     }
 
-    if (jl_gc_context_hook) {
-        (*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_CACHE,
-            &ptls->gc_cache);
-        (*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_SP, &sp);
-    }
+    gc_current_sp[ptls->tid] = &sp;
 
 
     jl_value_t *new_obj = NULL;
@@ -2361,7 +2346,7 @@ mark: {
                 jl_fielddescdyn_t *desc = (jl_fielddescdyn_t*)jl_dt_layout_fields(layout);
 
 		int old = jl_astaggedvalue(new_obj)->bits.gc & 2;
-                uintptr_t young = desc->markfunc(ptls->tid, new_obj);
+                uintptr_t young = desc->markfunc(ptls, new_obj);
 		if (old && young)
 		    gc_mark_push_remset(ptls, new_obj, young * 4 + 3);
                 goto pop;
@@ -2591,10 +2576,7 @@ static int _jl_gc_collect(jl_ptls_t ptls, int full)
     gc_mark_sp_t sp;
     gc_mark_sp_init(gc_cache, &sp);
 
-    if (jl_gc_context_hook) {
-        (*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_CACHE, gc_cache);
-        (*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_SP, &sp);
-    }
+    gc_current_sp[ptls->tid] = &sp;
 
     uint64_t t0 = jl_hrtime();
     int64_t last_perm_scanned_bytes = perm_scanned_bytes;
@@ -2757,8 +2739,6 @@ JL_DLLEXPORT void jl_gc_collect(int full)
 {
     if (jl_pre_gc_hook) ((*jl_pre_gc_hook)(full));
     jl_ptls_t ptls = jl_get_ptls_states();
-    if (jl_gc_context_hook)
-        (*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_TLS, ptls);
     if (jl_gc_disable_counter) {
         gc_num.deferred_alloc += (gc_num.allocd + gc_num.interval);
         gc_num.allocd = -(int64_t)gc_num.interval;
@@ -2826,9 +2806,6 @@ JL_DLLEXPORT jl_value_t *(jl_gc_alloc)(jl_ptls_t ptls, size_t sz, void *ty)
 // Per-thread initialization
 void jl_init_thread_heap(jl_ptls_t ptls)
 {
-    if (jl_gc_context_hook) {
-        (*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_TLS, ptls);
-    }
     jl_thread_heap_t *heap = &ptls->heap;
     jl_gc_pool_t *p = heap->norm_pools;
     for(int i=0; i < JL_GC_N_POOLS; i++) {
@@ -2880,6 +2857,7 @@ void jl_gc_init(void)
     if (maxmem > max_collect_interval)
         max_collect_interval = maxmem;
 #endif
+    gc_current_sp = (gc_mark_sp_t **)jl_malloc_aligned(jl_n_threads * sizeof(gc_mark_sp_t *), 64);
     gc_mark_sp_t sp = {NULL, NULL, NULL, NULL};
     gc_mark_loop(NULL, sp);
 }
@@ -3289,23 +3267,15 @@ JL_DLLEXPORT size_t jl_gc_external_obj_hdr_size(void)
 }
 
 
-JL_DLLEXPORT void * jl_gc_alloc_typed(void **context, size_t sz, void *t)
+JL_DLLEXPORT void * jl_gc_alloc_typed(jl_ptls_t ptls, size_t sz, void *t)
 {
-    return jl_gc_alloc((jl_ptls_t)context[JL_GC_CONTEXT_TLS], sz, t);
+    return jl_gc_alloc(ptls, sz, t);
 }
 
 JL_DLLEXPORT void jl_gc_set_needs_foreign_finalizer(jl_value_t *obj)
 {
     jl_gc_add_finalizer((jl_value_t *)obj, jl_nothing);
 }
-
-JL_DLLEXPORT void jl_init_gc_context(void) {
-    jl_ptls_t ptls = jl_get_ptls_states();
-    if (jl_gc_context_hook) {
-        (*jl_gc_context_hook)(ptls->tid, JL_GC_CONTEXT_TLS, ptls);
-    }
-}
-
 
 #ifdef __cplusplus
 }

@@ -330,14 +330,14 @@ typedef struct
 static jl_datatype_t *datatype_stack_internal;
 static jl_datatype_t *datatype_stack_external;
 static jl_datatype_t *datatype_stack;
-static jl_gc_context_t context[JL_GC_CONTEXT_SIZE];
+static jl_ptls_t ptls;
 
 dynstack_t *allocate_stack_mem(size_t capacity) {
   size_t size = offsetof(dynstack_t, data) + capacity * sizeof(jl_value_t *);
   jl_datatype_t *type = datatype_stack_internal;
   if (size > jl_gc_max_internal_obj_size())
     type = datatype_stack_external;
-  dynstack_t *result = (dynstack_t *) jl_gc_alloc_typed(context, size, type);
+  dynstack_t *result = (dynstack_t *) jl_gc_alloc_typed(ptls, size, type);
   result->size = 0;
   result->capacity = capacity;
   return result;
@@ -367,7 +367,7 @@ void check_stack_notempty(const char *name, jl_value_t *p) {
 // Create a new stack object
 
 JL_DLLEXPORT jl_value_t * stk_make() {
-  jl_value_t *hdr = jl_gc_alloc_typed(context, sizeof(jl_value_t *),
+  jl_value_t *hdr = jl_gc_alloc_typed(ptls, sizeof(jl_value_t *),
     datatype_stack);
   JL_GC_PUSH1(hdr);
   *(dynstack_t **)hdr = NULL;
@@ -436,7 +436,7 @@ static jl_module_t *module;
 void root_scanner(int full) {
   for (int i = 0; i < NAUXROOTS; i++) {
     if (aux_roots[i])
-      jl_gc_mark_queue_obj(context, aux_roots[i]);
+      jl_gc_mark_queue_obj(ptls, aux_roots[i]);
   }
 }
 
@@ -455,33 +455,22 @@ void pre_gc(int full) {
 void post_gc(int full) {
 }
 
-// The Julia context hooks.
-
-void set_context(int tid, int index, jl_gc_context_t value) {
-  if (tid > 0) return;
-  context[index] = value;
-}
-
-int gc_old(jl_value_t *p) {
-  return (jl_astaggedvalue(p)->bits.gc & 2) != 0;
-}
-
 // Mark the outer stack object (containing only a pointer to the data).
 
-uintptr_t mark_stack(int tid, jl_value_t *p) {
+uintptr_t mark_stack(jl_ptls_t ptls, jl_value_t *p) {
   if (!*(void **)p)
     return 0;
-  return jl_gc_mark_queue_obj(context, *(jl_value_t **)p) != 0;
+  return jl_gc_mark_queue_obj(ptls, *(jl_value_t **)p) != 0;
 }
 
 // Mark the actual stack data.
 // This is used both for `StackData` and `StackDataLarge`.
 
-uintptr_t mark_stack_data(int tid, jl_value_t *p) {
+uintptr_t mark_stack_data(jl_ptls_t ptls, jl_value_t *p) {
   dynstack_t *stk = (dynstack_t *)p;
   uintptr_t n = 0;
   for (size_t i = 0; i < stk->size; i++) {
-    if (jl_gc_mark_queue_obj(context, stk->data[i]))
+    if (jl_gc_mark_queue_obj(ptls, stk->data[i]))
       n++;
   }
   return n;
@@ -516,15 +505,14 @@ int main() {
   // Install hooks. This should happen before `jl_init()` and
   // before any GC is called.
 
-  jl_set_gc_root_scanner_hook(root_scanner);
   jl_set_gc_external_obj_alloc_hook(alloc_bigval);
   jl_set_gc_external_obj_free_hook(free_bigval);
-  jl_set_pre_gc_hook(pre_gc);
-  jl_set_post_gc_hook(post_gc);
-  jl_set_gc_context_hook(set_context);
 
   jl_init();
-  jl_init_gc_context();
+  ptls = jl_get_ptls_states();
+  jl_set_gc_root_scanner_hook(root_scanner);
+  jl_set_pre_gc_hook(pre_gc);
+  jl_set_post_gc_hook(post_gc);
   // Create module to store types in.
   module = jl_new_module(jl_symbol("TestGCExt"));
   module->parent = jl_main_module;
