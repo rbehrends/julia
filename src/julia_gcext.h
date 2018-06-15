@@ -1,3 +1,9 @@
+// This file is a part of Julia. License is MIT: https://julialang.org/license
+
+/*
+  interface for extending the garbage collection process with foreign types
+*/
+
 #ifndef JL_GCEXT_H
 #define JL_GCEXT_H
 
@@ -7,33 +13,37 @@ typedef void (*jl_gc_root_scanner_hook_t)(int full);
 typedef void (*jl_gc_task_scanner_hook_t)(jl_task_t *task, int full);
 typedef void (*jl_pre_gc_hook_t)(int full);
 typedef void (*jl_post_gc_hook_t)(int full);
+typedef void (*jl_gc_register_bigval_hook_t)(void *addr, size_t size);
+typedef void (*jl_gc_deregister_bigval_hook_t)(void *addr);
+
+typedef struct _jl_gc_hooks_t {
+  struct _jl_gc_hooks_t *next; // linked list
+
+  // Hook set by foreign code and invoked by Julia during a garbage collection
+  // when walking the GC roots
+  jl_gc_root_scanner_hook_t root_scanner_hook;
+
+  // Hook set by foreign code and invoked by Julia whenever a task is being scanned
+  jl_gc_task_scanner_hook_t task_scanner_hook;
+
+  // Hook set by foreign code and invoked by Julia whenever a garbage collection begins
+  jl_pre_gc_hook_t pre_gc_hook;
+
+  // Hook set by foreign code and invoked by Julia whenever a garbage collection ends
+  jl_post_gc_hook_t post_gc_hook;
+
+  // Hooks to register `bigval_t` instances
+  jl_gc_register_bigval_hook_t register_bigval;
+
+  // Hooks to deregister `bigval_t` instances
+  jl_gc_deregister_bigval_hook_t deregister_bigval;
+} jl_gc_hooks_t;
 
 
-// Hook set by foreign code and invoked by Julia during a garbage collection
-// when walking the GC roots
-JL_DLLEXPORT extern void jl_set_gc_root_scanner_hook(jl_gc_root_scanner_hook_t hook);
-JL_DLLEXPORT extern jl_gc_root_scanner_hook_t jl_get_gc_root_scanner_hook(void);
+// register global gc hooks
+JL_DLLEXPORT extern void jl_register_gc_hooks(jl_gc_hooks_t *hooks);
 
-// Hook set by foreign code and invoked by Julia whenever a garbage collection begins
-JL_DLLEXPORT extern void jl_set_pre_gc_hook(jl_pre_gc_hook_t hook);
-JL_DLLEXPORT extern jl_pre_gc_hook_t jl_get_pre_gc_hook(void);
 
-// Hook set by foreign code and invoked by Julia whenever a garbage collection ends
-JL_DLLEXPORT extern void jl_set_post_gc_hook(jl_post_gc_hook_t hook);
-JL_DLLEXPORT extern jl_post_gc_hook_t jl_get_post_gc_hook(void);
-
-// Hook set by foreign code and invoked by Julia whenever a task is being scanned
-JL_DLLEXPORT extern void jl_set_gc_task_scanner_hook(jl_gc_task_scanner_hook_t hook);
-JL_DLLEXPORT extern jl_gc_task_scanner_hook_t jl_get_gc_task_scanner_hook(void);
-
-typedef void *(*jl_gc_external_obj_alloc_hook_t)(size_t size);
-typedef void (*jl_gc_external_obj_free_hook_t)(void *addr);
-
-// Hooks to invoke to allocate `bigval_t` instances.
-JL_DLLEXPORT extern void jl_set_gc_external_obj_alloc_hook(jl_gc_external_obj_alloc_hook_t hook);
-JL_DLLEXPORT extern jl_gc_external_obj_alloc_hook_t jl_get_gc_external_obj_alloc_hook(void);
-JL_DLLEXPORT extern void jl_set_gc_external_obj_free_hook(jl_gc_external_obj_free_hook_t hook);
-JL_DLLEXPORT extern jl_gc_external_obj_free_hook_t jl_get_gc_external_obj_free_hook(void);
 
 // Types for mark and finalize functions.
 // We make the cache and sp parameters opaque so that the internals
