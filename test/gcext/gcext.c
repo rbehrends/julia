@@ -244,23 +244,19 @@ static size_t bigval_startoffset;
 
 // Hooks to allocate and free external objects (bigval_t's).
 
-void * alloc_bigval(size_t size)
+void alloc_bigval(void *addr, size_t size)
 {
-    void * result = malloc(size);
-    memset(result, 0, size);
     treap_t * node = alloc_treap();
-    node->addr = result;
+    node->addr = addr;
     node->size = size;
     node->prio = xorshift_rng();
     treap_insert(&bigvals, node);
-    return result;
 }
 
 void free_bigval(void * p)
 {
     if (p) {
         treap_delete(&bigvals, p);
-        free(p);
     }
 }
 
@@ -502,17 +498,17 @@ jl_value_t *checked_eval_string(const char* code)
 }
 
 int main() {
-  // Install hooks. This should happen before `jl_init()` and
+  // Install callbacks. This should happen before `jl_init()` and
   // before any GC is called.
 
-  jl_set_gc_external_obj_alloc_hook(alloc_bigval);
-  jl_set_gc_external_obj_free_hook(free_bigval);
+  jl_gc_register_callback(jl_gc_cb_external_alloc, alloc_bigval);
+  jl_gc_register_callback(jl_gc_cb_external_free, free_bigval);
 
   jl_init();
   ptls = jl_get_ptls_states();
-  jl_set_gc_root_scanner_hook(root_scanner);
-  jl_set_pre_gc_hook(pre_gc);
-  jl_set_post_gc_hook(post_gc);
+  jl_gc_register_callback(jl_gc_cb_root_scanner, root_scanner);
+  jl_gc_register_callback(jl_gc_cb_pre_gc, pre_gc);
+  jl_gc_register_callback(jl_gc_cb_post_gc, post_gc);
   // Create module to store types in.
   module = jl_new_module(jl_symbol("TestGCExt"));
   module->parent = jl_main_module;

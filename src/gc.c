@@ -8,79 +8,51 @@
 extern "C" {
 #endif
 
-static jl_gc_root_scanner_hook_t jl_gc_root_scanner_hook;
-static jl_gc_task_scanner_hook_t jl_gc_task_scanner_hook;
-static jl_pre_gc_hook_t jl_pre_gc_hook;
-static jl_post_gc_hook_t jl_post_gc_hook;
-static jl_gc_external_obj_alloc_hook_t jl_gc_external_obj_alloc_hook;
-static jl_gc_external_obj_free_hook_t jl_gc_external_obj_free_hook;
+typedef struct jl_gc_callback_list_t {
+    struct jl_gc_callback_list_t *next;
+    jl_gc_cb_func_t func;
+} jl_gc_callback_list_t;
+
+static jl_gc_callback_list_t * gc_callbacks[jl_gc_num_callbacks];
+
+#define gc_invoke_callbacks(kind, args) \
+    do { \
+        for (jl_gc_callback_list_t *cb = gc_callbacks[kind]; \
+                cb != NULL; \
+                cb = cb->next) \
+        { \
+            ((kind##_t)(cb->func)) args; \
+        } \
+    } while (0)
+
+JL_DLLEXPORT void _jl_gc_register_callback(jl_gc_callback_t kind,
+        jl_gc_cb_func_t func) {
+  jl_gc_callback_list_t **list = gc_callbacks + kind;
+  while (*list != NULL) {
+    if ((*list)->func == func)
+      return;
+    list = &((*list)->next);
+  }
+  *list = malloc(sizeof(jl_gc_callback_list_t));
+  (*list)->next = NULL;
+  (*list)->func = func;
+}
+
+JL_DLLEXPORT void _jl_gc_deregister_callback(jl_gc_callback_t kind,
+        jl_gc_cb_func_t func) {
+  jl_gc_callback_list_t **list = gc_callbacks + kind;
+  while (*list != NULL) {
+    if ((*list)->func == func) {
+      jl_gc_callback_list_t *tmp = *list;
+      (*list) = (*list)->next;
+      free(tmp);
+      return;
+    }
+    list = &((*list)->next);
+  }
+}
 
 static gc_mark_sp_t **gc_current_sp;
-
-// Hook to invoke whenever a garbage collection starts
-JL_DLLEXPORT extern void jl_set_gc_root_scanner_hook(jl_gc_root_scanner_hook_t hook)
-{
-    jl_gc_root_scanner_hook = hook;
-}
-JL_DLLEXPORT extern jl_gc_root_scanner_hook_t jl_get_gc_root_scanner_hook(void)
-{
-    return jl_gc_root_scanner_hook;
-}
-
-// Hook to invoke whenever a garbage collection begins
-JL_DLLEXPORT extern void jl_set_pre_gc_hook(jl_pre_gc_hook_t hook)
-{
-    jl_pre_gc_hook = hook;
-}
-
-JL_DLLEXPORT extern jl_pre_gc_hook_t jl_get_pre_gc_hook(void)
-{
-    return jl_pre_gc_hook;
-}
-
-// Hook to invoke whenever a garbage collection ends
-JL_DLLEXPORT extern void jl_set_post_gc_hook(jl_post_gc_hook_t hook)
-{
-    jl_post_gc_hook = hook;
-}
-
-JL_DLLEXPORT extern jl_post_gc_hook_t jl_get_post_gc_hook(void)
-{
-    return jl_post_gc_hook;
-}
-
-// Hook to invoke whenever a task is being scanned
-JL_DLLEXPORT extern void jl_set_gc_task_scanner_hook(jl_gc_task_scanner_hook_t hook)
-{
-    jl_gc_task_scanner_hook = hook;
-}
-
-JL_DLLEXPORT extern jl_gc_task_scanner_hook_t jl_get_gc_task_scanner_hook(void)
-{
-    return jl_gc_task_scanner_hook;
-}
-
-// Hooks to invoke to allocate `bigval_t` instances.
-JL_DLLEXPORT extern void jl_set_gc_external_obj_alloc_hook(jl_gc_external_obj_alloc_hook_t hook)
-{
-    jl_gc_external_obj_alloc_hook = hook;
-}
-
-JL_DLLEXPORT extern jl_gc_external_obj_alloc_hook_t jl_get_gc_external_obj_alloc_hook(void)
-{
-    return jl_gc_external_obj_alloc_hook;
-}
-
-JL_DLLEXPORT extern void jl_set_gc_external_obj_free_hook(jl_gc_external_obj_free_hook_t hook)
-{
-    jl_gc_external_obj_free_hook = hook;
-}
-
-JL_DLLEXPORT extern jl_gc_external_obj_free_hook_t jl_get_gc_external_obj_free_hook(void)
-{
-    return jl_gc_external_obj_free_hook;
-}
-
 
 // Protect all access to `finalizer_list_marked` and `to_finalize`.
 // For accessing `ptls->finalizers`, the lock is needed if a thread
@@ -832,9 +804,8 @@ JL_DLLEXPORT jl_value_t *jl_gc_big_alloc(jl_ptls_t ptls, size_t sz)
     size_t allocsz = LLT_ALIGN(sz + offs, JL_CACHE_BYTE_ALIGNMENT);
     if (allocsz < sz)  // overflow in adding offs, size was "negative"
         jl_throw(jl_memory_exception);
-    bigval_t *v = (bigval_t *)((jl_gc_external_obj_alloc_hook)
-      ? (*jl_gc_external_obj_alloc_hook)(allocsz)
-      : (bigval_t*)malloc_cache_align(allocsz));
+    bigval_t *v = (bigval_t*)malloc_cache_align(allocsz);
+    gc_invoke_callbacks(jl_gc_cb_external_alloc, (v, allocsz));
     if (v == NULL)
         jl_throw(jl_memory_exception);
 #ifdef JULIA_ENABLE_THREADING
@@ -885,10 +856,8 @@ static bigval_t **sweep_big_list(int sweep_full, bigval_t **pv)
 #ifdef MEMDEBUG
             memset(v, 0xbb, v->sz&~3);
 #endif
-            if (jl_gc_external_obj_free_hook)
-              (*jl_gc_external_obj_free_hook)(v);
-            else
-              jl_free_aligned(v);
+            gc_invoke_callbacks(jl_gc_cb_external_free, (v));
+            jl_free_aligned(v);
         }
         gc_time_count_big(old_bits, bits);
         v = nxt;
@@ -2229,8 +2198,8 @@ mark: {
             int stkbuf = (ta->stkbuf != (void*)(intptr_t)-1 && ta->stkbuf != NULL);
             int16_t tid = ta->tid;
             jl_ptls_t ptls2 = jl_all_tls_states[tid];
-            if (jl_gc_task_scanner_hook)
-                jl_gc_task_scanner_hook(ta, ta == ptls2->root_task);
+            gc_invoke_callbacks(jl_gc_cb_task_scanner,
+                (ta, ta == ptls2->root_task));
             if (stkbuf) {
 #ifdef COPY_STACKS
                 gc_setmark_buf_(ptls, ta->stkbuf, bits, ta->bufsz);
@@ -2597,7 +2566,7 @@ static int _jl_gc_collect(jl_ptls_t ptls, int full)
 
     // 3. walk roots
     mark_roots(gc_cache, &sp);
-    if (jl_gc_root_scanner_hook) (*jl_gc_root_scanner_hook)(full);
+    gc_invoke_callbacks(jl_gc_cb_root_scanner, (full));
     gc_mark_loop(ptls, sp);
     gc_mark_sp_init(gc_cache, &sp);
     gc_num.since_sweep += gc_num.allocd + (int64_t)gc_num.interval;
@@ -2737,7 +2706,7 @@ static int _jl_gc_collect(jl_ptls_t ptls, int full)
 
 JL_DLLEXPORT void jl_gc_collect(int full)
 {
-    if (jl_pre_gc_hook) ((*jl_pre_gc_hook)(full));
+    gc_invoke_callbacks(jl_gc_cb_pre_gc, (full));
     jl_ptls_t ptls = jl_get_ptls_states();
     if (jl_gc_disable_counter) {
         gc_num.deferred_alloc += (gc_num.allocd + gc_num.interval);
@@ -2785,7 +2754,7 @@ JL_DLLEXPORT void jl_gc_collect(int full)
         run_finalizers(ptls);
         ptls->in_finalizer = was_in_finalizer;
     }
-    if (jl_post_gc_hook) (*jl_post_gc_hook)(full);
+    gc_invoke_callbacks(jl_gc_cb_post_gc, (full));
 }
 
 void gc_mark_queue_all_roots(jl_ptls_t ptls, gc_mark_sp_t *sp)

@@ -3,37 +3,52 @@
 
 // requires including "julia.h" beforehand.
 
-typedef void (*jl_gc_root_scanner_hook_t)(int full);
-typedef void (*jl_gc_task_scanner_hook_t)(jl_task_t *task, int full);
-typedef void (*jl_pre_gc_hook_t)(int full);
-typedef void (*jl_post_gc_hook_t)(int full);
+// Kinds of callbacks. For each kind of callback, there must be
+// a corresponding type with the same name with a "_t" suffix.
+
+typedef enum {
+    jl_gc_cb_root_scanner,
+    jl_gc_cb_task_scanner,
+    jl_gc_cb_pre_gc,
+    jl_gc_cb_post_gc,
+    jl_gc_cb_external_alloc,
+    jl_gc_cb_external_free,
+    // number of callbacks:
+    jl_gc_num_callbacks
+} jl_gc_callback_t;
+
+typedef void(*jl_gc_cb_func_t)(void);
+
+JL_DLLEXPORT void _jl_gc_register_callback(jl_gc_callback_t cb,
+    jl_gc_cb_func_t fn);
+JL_DLLEXPORT void _jl_gc_deregister_callback(jl_gc_callback_t cb,
+    jl_gc_cb_func_t fn);
+
+// The following macros are a workaround to account for the lack of
+// generics in C prior to C11, while keeping invocation typesafe.
+// Assignment to local variables both prevents repeated evaluation
+// and ensures that the function signature matches.
+
+#define jl_gc_register_callback(cb, func) \
+    do { \
+        jl_gc_callback_t _cb = cb; \
+        cb##_t _func = func; \
+        _jl_gc_register_callback(_cb, (jl_gc_cb_func_t) _func); \
+    } while (0)
+#define jl_gc_deregister_callback(cb, func) \
+    do { \
+        jl_gc_callback_t _cb = cb; \
+        cb##_t _func = func; \
+        _jl_gc_deregister_callback(_cb, (jl_gc_cb_func_t) _func); \
+    } while (0)
 
 
-// Hook set by foreign code and invoked by Julia during a garbage collection
-// when walking the GC roots
-JL_DLLEXPORT extern void jl_set_gc_root_scanner_hook(jl_gc_root_scanner_hook_t hook);
-JL_DLLEXPORT extern jl_gc_root_scanner_hook_t jl_get_gc_root_scanner_hook(void);
-
-// Hook set by foreign code and invoked by Julia whenever a garbage collection begins
-JL_DLLEXPORT extern void jl_set_pre_gc_hook(jl_pre_gc_hook_t hook);
-JL_DLLEXPORT extern jl_pre_gc_hook_t jl_get_pre_gc_hook(void);
-
-// Hook set by foreign code and invoked by Julia whenever a garbage collection ends
-JL_DLLEXPORT extern void jl_set_post_gc_hook(jl_post_gc_hook_t hook);
-JL_DLLEXPORT extern jl_post_gc_hook_t jl_get_post_gc_hook(void);
-
-// Hook set by foreign code and invoked by Julia whenever a task is being scanned
-JL_DLLEXPORT extern void jl_set_gc_task_scanner_hook(jl_gc_task_scanner_hook_t hook);
-JL_DLLEXPORT extern jl_gc_task_scanner_hook_t jl_get_gc_task_scanner_hook(void);
-
-typedef void *(*jl_gc_external_obj_alloc_hook_t)(size_t size);
-typedef void (*jl_gc_external_obj_free_hook_t)(void *addr);
-
-// Hooks to invoke to allocate `bigval_t` instances.
-JL_DLLEXPORT extern void jl_set_gc_external_obj_alloc_hook(jl_gc_external_obj_alloc_hook_t hook);
-JL_DLLEXPORT extern jl_gc_external_obj_alloc_hook_t jl_get_gc_external_obj_alloc_hook(void);
-JL_DLLEXPORT extern void jl_set_gc_external_obj_free_hook(jl_gc_external_obj_free_hook_t hook);
-JL_DLLEXPORT extern jl_gc_external_obj_free_hook_t jl_get_gc_external_obj_free_hook(void);
+typedef void (*jl_gc_cb_root_scanner_t)(int full);
+typedef void (*jl_gc_cb_task_scanner_t)(jl_task_t *task, int full);
+typedef void (*jl_gc_cb_pre_gc_t)(int full);
+typedef void (*jl_gc_cb_post_gc_t)(int full);
+typedef void (*jl_gc_cb_external_alloc_t)(void *addr, size_t size);
+typedef void (*jl_gc_cb_external_free_t)(void *addr);
 
 // Types for mark and finalize functions.
 // We make the cache and sp parameters opaque so that the internals
@@ -55,7 +70,6 @@ JL_DLLEXPORT jl_datatype_t *jl_new_foreign_type(
 
 JL_DLLEXPORT size_t jl_gc_max_internal_obj_size(void);
 JL_DLLEXPORT size_t jl_gc_external_obj_hdr_size(void);
-
 
 // Returns the base address of a memory block, assuming it
 // is stored in a julia memory pool. Return NULL otherwise.
