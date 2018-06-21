@@ -1478,13 +1478,6 @@ STATIC_INLINE void gc_mark_stack_push(jl_gc_mark_cache_t *gc_cache, gc_mark_sp_t
     }
 }
 
-JL_DLLEXPORT void jl_gc_mark_stack_push(void *cache, void *sp, void *pc,
-                                        void *data, size_t datasize, int inc)
-{
-  gc_mark_stack_push((jl_gc_mark_cache_t *)cache, (gc_mark_sp_t *)sp,
-    pc, data, datasize, inc);
-}
-
 // Check if the reference is non-NULL and atomically set the mark bit.
 // Update `*nptr`, which is the `nptr` field of the parent item, if the object is young.
 // Return the tag (with GC bits cleared) and the GC bits in `*ptag` and `*pbits`.
