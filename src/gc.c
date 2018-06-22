@@ -33,7 +33,7 @@ JL_DLLEXPORT void _jl_gc_register_callback(jl_gc_callback_t kind,
            return;
        list = &((*list)->next);
     }
-    *list = malloc(sizeof(jl_gc_callback_list_t));
+    *list = (jl_gc_callback_list_t *)malloc(sizeof(jl_gc_callback_list_t));
     (*list)->next = NULL;
     (*list)->func = func;
 }
