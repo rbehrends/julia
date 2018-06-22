@@ -27,29 +27,29 @@ static jl_gc_callback_list_t * gc_callbacks[jl_gc_num_callbacks];
 
 JL_DLLEXPORT void _jl_gc_register_callback(jl_gc_callback_t kind,
         jl_gc_cb_func_t func) {
-  jl_gc_callback_list_t **list = gc_callbacks + kind;
-  while (*list != NULL) {
-    if ((*list)->func == func)
-      return;
-    list = &((*list)->next);
-  }
-  *list = malloc(sizeof(jl_gc_callback_list_t));
-  (*list)->next = NULL;
-  (*list)->func = func;
+    jl_gc_callback_list_t **list = gc_callbacks + kind;
+    while (*list != NULL) {
+       if ((*list)->func == func)
+           return;
+       list = &((*list)->next);
+    }
+    *list = malloc(sizeof(jl_gc_callback_list_t));
+    (*list)->next = NULL;
+    (*list)->func = func;
 }
 
 JL_DLLEXPORT void _jl_gc_deregister_callback(jl_gc_callback_t kind,
         jl_gc_cb_func_t func) {
-  jl_gc_callback_list_t **list = gc_callbacks + kind;
-  while (*list != NULL) {
-    if ((*list)->func == func) {
-      jl_gc_callback_list_t *tmp = *list;
-      (*list) = (*list)->next;
-      free(tmp);
-      return;
+    jl_gc_callback_list_t **list = gc_callbacks + kind;
+    while (*list != NULL) {
+        if ((*list)->func == func) {
+            jl_gc_callback_list_t *tmp = *list;
+            (*list) = (*list)->next;
+            free(tmp);
+            return;
+        }
+        list = &((*list)->next);
     }
-    list = &((*list)->next);
-  }
 }
 
 static gc_mark_sp_t **gc_current_sp;
@@ -1551,7 +1551,7 @@ STATIC_INLINE int gc_mark_queue_obj(jl_gc_mark_cache_t *gc_cache, gc_mark_sp_t *
 
 JL_DLLEXPORT int jl_gc_mark_queue_obj(jl_ptls_t ptls, jl_value_t *obj)
 {
-   return gc_mark_queue_obj(&ptls->gc_cache, gc_current_sp[ptls->tid], obj);
+    return gc_mark_queue_obj(&ptls->gc_cache, gc_current_sp[ptls->tid], obj);
 }
 
 // Check if `nptr` is tagged for `old + refyoung`,
@@ -1822,7 +1822,6 @@ JL_EXTENSION NOINLINE void gc_mark_loop(jl_ptls_t ptls, gc_mark_sp_t sp)
     }
 
     gc_current_sp[ptls->tid] = &sp;
-
 
     jl_value_t *new_obj = NULL;
     uintptr_t tag = 0;
@@ -3139,8 +3138,9 @@ STATIC_INLINE int is_valid_tag(void *p)
     jl_gc_pagemeta_t *meta = page_metadata(p);
     if (!meta || !meta->ages)
        return 0;
+
     char *page = gc_page_data(p);
-    size_t off = (char *) p - page;
+    size_t off = (char *)p - page;
     off -= GC_PAGE_OFFSET;
     return off % meta->osize == 0;
 }
@@ -3148,24 +3148,30 @@ STATIC_INLINE int is_valid_tag(void *p)
 STATIC_INLINE int is_valid_pool_obj(jl_taggedvalue_t *val)
 {
     jl_value_t *datatype_type = (jl_value_t *)jl_datatype_type;
-    if (val->next == NULL) return 0; // end of free list
+    if (val->next == NULL)
+        return 0; // end of free list
     val = (jl_taggedvalue_t *) gc_ptr_clear_tag(val, 3);
-    if (jl_valueof(val->next) == datatype_type) return 1; // a type
+    if (jl_valueof(val->next) == datatype_type)
+        return 1; // a type
     jl_value_t *next = (jl_value_t *) gc_ptr_clear_tag(val->next, 3);
     val = jl_astaggedvalue(next);
-    if (!is_valid_tag(val)) return 0;
+    if (!is_valid_tag(val))
+        return 0;
+
     // We now follow the header link. This must be either part
     // of the free list (including NULL) or a type reference.
-    if (val->next == NULL) return 0;
+    if (val->next == NULL)
+        return 0;
     next = (jl_value_t *) gc_ptr_clear_tag(val->next, 3);
-    if (next == datatype_type) return 1;
+    if (next == datatype_type)
+        return 1;
     return 0;
 }
 
 
 JL_DLLEXPORT int jl_gc_is_internal_obj_alloc(jl_value_t *p)
 {
-    jl_gc_pagemeta_t* meta = page_metadata(p);
+    jl_gc_pagemeta_t *meta = page_metadata(p);
     if (meta && meta->ages) {
         char* page = gc_page_data(p);
         // offset within page.
@@ -3187,7 +3193,7 @@ JL_DLLEXPORT int jl_gc_is_internal_obj_alloc(jl_value_t *p)
 }
 
 JL_DLLEXPORT size_t jl_gc_alloc_size(jl_value_t *p) {
-    jl_gc_pagemeta_t* meta = page_metadata(p);
+    jl_gc_pagemeta_t *meta = page_metadata(p);
     if (meta)
         return meta->osize - sizeof(jl_taggedvalue_t);
     else { // bigval
@@ -3196,23 +3202,25 @@ JL_DLLEXPORT size_t jl_gc_alloc_size(jl_value_t *p) {
     }
 }
 
-JL_DLLEXPORT jl_value_t * jl_gc_internal_obj_base_ptr(void *p)
+JL_DLLEXPORT jl_value_t *jl_gc_internal_obj_base_ptr(void *p)
 {
     p = (char *) p - 1;
     jl_gc_pagemeta_t *meta = page_metadata(p);
     if (meta && meta->ages) {
         char *page = gc_page_data(p);
         // offset within page.
-        size_t off = (char *) p - page;
-        if (off < GC_PAGE_OFFSET) return NULL;
+        size_t off = (char *)p - page;
+        if (off < GC_PAGE_OFFSET)
+            return NULL;
         // offset within object
         size_t off2 = (off - GC_PAGE_OFFSET);
         size_t osize = meta->osize;
-        // if (osize == 0) return NULL;
         off2 %= osize;
-        if (off - off2 + osize > GC_PAGE_SZ) return NULL;
+        if (off - off2 + osize > GC_PAGE_SZ)
+            return NULL;
         jl_taggedvalue_t *val = (jl_taggedvalue_t *)((char *)p - off2);
-        if (!is_valid_pool_obj(val)) return NULL;
+        if (!is_valid_pool_obj(val))
+            return NULL;
         return jl_valueof(val);
     }
     return NULL;
