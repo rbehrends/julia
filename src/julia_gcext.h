@@ -17,7 +17,7 @@ typedef enum {
     jl_gc_num_callbacks
 } jl_gc_callback_t;
 
-typedef void(*jl_gc_cb_func_t)(void);
+typedef void (*jl_gc_cb_func_t)(void);
 
 JL_DLLEXPORT void _jl_gc_register_callback(jl_gc_callback_t cb,
     jl_gc_cb_func_t fn);
@@ -95,11 +95,11 @@ JL_DLLEXPORT size_t jl_gc_alloc_size(jl_value_t *p);
 // add support for enumerating fields and such.
 
 typedef struct {
-  jl_markfunc_t markfunc;
-  jl_finalizefunc_t finalizefunc;
+    jl_markfunc_t markfunc;
+    jl_finalizefunc_t finalizefunc;
 } jl_fielddescdyn_t;
 
-JL_DLLEXPORT void * jl_gc_alloc_typed(jl_ptls_t ptls, size_t sz, void *ty);
+JL_DLLEXPORT void *jl_gc_alloc_typed(jl_ptls_t ptls, size_t sz, void *ty);
 JL_DLLEXPORT int jl_gc_mark_queue_obj(jl_ptls_t ptls, jl_value_t *obj);
 
 JL_DLLEXPORT void jl_gc_set_needs_foreign_finalizer(jl_value_t *obj);

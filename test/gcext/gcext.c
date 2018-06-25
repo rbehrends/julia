@@ -11,7 +11,7 @@
 // range goes from 0 to 2^k-1 (region tables), we simply convert
 // to uintptr_t and compare those.
 
-static inline int cmp_ptr(void * p, void * q)
+static inline int cmp_ptr(void *p, void *q)
 {
     uintptr_t paddr = (uintptr_t)p;
     uintptr_t qaddr = (uintptr_t)q;
@@ -23,7 +23,7 @@ static inline int cmp_ptr(void * p, void * q)
         return 0;
 }
 
-static inline int lt_ptr(void * a, void * b)
+static inline int lt_ptr(void *a, void *b)
 {
     return (uintptr_t)a < (uintptr_t)b;
 }
@@ -52,7 +52,7 @@ static inline void *min_ptr(void *a, void *b)
 #endif
 
 /* align pointer to full word if mis-aligned */
-static inline void * align_ptr(void * p)
+static inline void *align_ptr(void *p)
 {
     uintptr_t u = (uintptr_t)p;
     u &= ~(sizeof(p) - 1);
@@ -64,21 +64,20 @@ static inline void * align_ptr(void * p)
 
 typedef struct treap_t {
     struct treap_t *left, *right;
-    size_t          prio;
-    void *          addr;
-    size_t          size;
+    size_t prio;
+    void *addr;
+    size_t size;
 } treap_t;
 
-static treap_t * treap_free_list;
+static treap_t *treap_free_list;
 
-treap_t * alloc_treap(void)
+treap_t *alloc_treap(void)
 {
-    treap_t * result;
+    treap_t *result;
     if (treap_free_list) {
         result = treap_free_list;
         treap_free_list = treap_free_list->right;
-    }
-    else
+    } else
         result = malloc(sizeof(treap_t));
     result->left = NULL;
     result->right = NULL;
@@ -87,16 +86,16 @@ treap_t * alloc_treap(void)
     return result;
 }
 
-void free_treap(treap_t * t)
+void free_treap(treap_t *t)
 {
     t->right = treap_free_list;
     treap_free_list = t;
 }
 
-static inline int test_bigval_range(treap_t * node, void * p)
+static inline int test_bigval_range(treap_t *node, void *p)
 {
-    char * l = node->addr;
-    char * r = l + node->size;
+    char *l = node->addr;
+    char *r = l + node->size;
     if (lt_ptr(p, l))
         return -1;
     if (!lt_ptr(p, r))
@@ -104,45 +103,44 @@ static inline int test_bigval_range(treap_t * node, void * p)
     return 0;
 }
 
-
 #define L(t) ((t)->left)
 #define R(t) ((t)->right)
 
-static inline void treap_rot_right(treap_t ** treap)
+static inline void treap_rot_right(treap_t **treap)
 {
     /*       t                 l       */
     /*     /   \             /   \     */
     /*    l     r    -->    a     t    */
     /*   / \                     / \   */
     /*  a   b                   b   r  */
-    treap_t * t = *treap;
-    treap_t * l = L(t);
-    treap_t * a = L(l);
-    treap_t * b = R(l);
+    treap_t *t = *treap;
+    treap_t *l = L(t);
+    treap_t *a = L(l);
+    treap_t *b = R(l);
     L(l) = a;
     R(l) = t;
     L(t) = b;
     *treap = l;
 }
 
-static inline void treap_rot_left(treap_t ** treap)
+static inline void treap_rot_left(treap_t **treap)
 {
     /*     t                   r       */
     /*   /   \               /   \     */
     /*  l     r    -->      t     b    */
     /*       / \           / \         */
     /*      a   b         l   a        */
-    treap_t * t = *treap;
-    treap_t * r = R(t);
-    treap_t * a = L(r);
-    treap_t * b = R(r);
+    treap_t *t = *treap;
+    treap_t *r = R(t);
+    treap_t *a = L(r);
+    treap_t *b = R(r);
     L(r) = t;
     R(r) = b;
     R(t) = a;
     *treap = r;
 }
 
-static treap_t * treap_find(treap_t * treap, void * p)
+static treap_t *treap_find(treap_t *treap, void *p)
 {
     while (treap) {
         int c = test_bigval_range(treap, p);
@@ -156,23 +154,21 @@ static treap_t * treap_find(treap_t * treap, void * p)
     return NULL;
 }
 
-static void treap_insert(treap_t ** treap, treap_t * val)
+static void treap_insert(treap_t **treap, treap_t *val)
 {
-    treap_t * t = *treap;
+    treap_t *t = *treap;
     if (t == NULL) {
         L(val) = NULL;
         R(val) = NULL;
         *treap = val;
-    }
-    else {
+    } else {
         int c = cmp_ptr(val->addr, t->addr);
         if (c < 0) {
             treap_insert(&L(t), val);
             if (L(t)->prio > t->prio) {
                 treap_rot_right(treap);
             }
-        }
-        else if (c > 0) {
+        } else if (c > 0) {
             treap_insert(&R(t), val);
             if (R(t)->prio > t->prio) {
                 treap_rot_left(treap);
@@ -181,26 +177,23 @@ static void treap_insert(treap_t ** treap, treap_t * val)
     }
 }
 
-static void treap_delete_node(treap_t ** treap)
+static void treap_delete_node(treap_t **treap)
 {
     for (;;) {
-        treap_t * t = *treap;
+        treap_t *t = *treap;
         if (L(t) == NULL) {
             *treap = R(t);
             free_treap(t);
             break;
-        }
-        else if (R(t) == NULL) {
+        } else if (R(t) == NULL) {
             *treap = L(t);
             free_treap(t);
             break;
-        }
-        else {
+        } else {
             if (L(t)->prio > R(t)->prio) {
                 treap_rot_right(treap);
                 treap = &R(*treap);
-            }
-            else {
+            } else {
                 treap_rot_left(treap);
                 treap = &L(*treap);
             }
@@ -208,18 +201,16 @@ static void treap_delete_node(treap_t ** treap)
     }
 }
 
-static int treap_delete(treap_t ** treap, void * addr)
+static int treap_delete(treap_t **treap, void *addr)
 {
     while (*treap != NULL) {
         int c = cmp_ptr(addr, (*treap)->addr);
         if (c == 0) {
             treap_delete_node(treap);
             return 1;
-        }
-        else if (c < 0) {
+        } else if (c < 0) {
             treap = &L(*treap);
-        }
-        else {
+        } else {
             treap = &R(*treap);
         }
     }
@@ -238,22 +229,21 @@ static uint64_t xorshift_rng(void)
     return x * (uint64_t)0x2545F4914F6CDD1DUL;
 }
 
-
-static treap_t * bigvals;
+static treap_t *bigvals;
 static size_t bigval_startoffset;
 
 // Hooks to allocate and free external objects (bigval_t's).
 
 void alloc_bigval(void *addr, size_t size)
 {
-    treap_t * node = alloc_treap();
+    treap_t *node = alloc_treap();
     node->addr = addr;
     node->size = size;
     node->prio = xorshift_rng();
     treap_insert(&bigvals, node);
 }
 
-void free_bigval(void * p)
+void free_bigval(void *p)
 {
     if (p) {
         treap_delete(&bigvals, p);
@@ -267,60 +257,64 @@ void free_bigval(void * p)
 static jl_value_t *aux_roots[NAUXROOTS];
 JL_DLLEXPORT size_t gc_counter_full, gc_counter_inc;
 
-JL_DLLEXPORT jl_value_t *get_aux_root(size_t n) {
-  if (n >= NAUXROOTS)
-    jl_error("get_aux_root: index out of range");
-  return aux_roots[n];
+JL_DLLEXPORT jl_value_t *get_aux_root(size_t n)
+{
+    if (n >= NAUXROOTS)
+        jl_error("get_aux_root: index out of range");
+    return aux_roots[n];
 }
 
-JL_DLLEXPORT void set_aux_root(size_t n, jl_value_t *val) {
-  if (n >= NAUXROOTS)
-    jl_error("set_aux_root: index out of range");
-  aux_roots[n] = val;
+JL_DLLEXPORT void set_aux_root(size_t n, jl_value_t *val)
+{
+    if (n >= NAUXROOTS)
+        jl_error("set_aux_root: index out of range");
+    aux_roots[n] = val;
 }
 
-JL_DLLEXPORT size_t get_gc_counter(int full) {
-  if (full)
-    return gc_counter_full;
-  else
-    return gc_counter_inc;
+JL_DLLEXPORT size_t get_gc_counter(int full)
+{
+    if (full)
+        return gc_counter_full;
+    else
+        return gc_counter_inc;
 }
 
 static size_t finalizer_calls = 0;
 
-JL_DLLEXPORT size_t get_finalizer_calls() {
-  return finalizer_calls;
-}
+JL_DLLEXPORT size_t get_finalizer_calls() { return finalizer_calls; }
 
-
-JL_DLLEXPORT int internal_obj_scan(jl_value_t *val) {
-  if (jl_gc_is_internal_obj_alloc(val)) {
-    if (jl_gc_internal_obj_base_ptr(val) != val) return 0;
-    size_t size = jl_gc_alloc_size(val);
-    char *addr = (char *)val;
-    for (size_t i = 0; i <= size; i++) {
-      if (jl_gc_internal_obj_base_ptr(addr+i) != val)
-        return 0;
-    }
-    return 1;
-  } else {
-    treap_t * node = treap_find(bigvals, val);
-    if (!node) return 0;
-    char *addr = node->addr;
-    if ((jl_value_t *)addr != val) return 0;
-    size_t size = node->size;
-    for (size_t i = 0; i <= size; i++) {
-      if (treap_find(bigvals, addr+i) != node) return 0;
-    }
-    return 1;
-  }
-}
-
-typedef struct
+JL_DLLEXPORT int internal_obj_scan(jl_value_t *val)
 {
-  size_t size;
-  size_t capacity;
-  jl_value_t *data[1];
+    if (jl_gc_is_internal_obj_alloc(val)) {
+        if (jl_gc_internal_obj_base_ptr(val) != val)
+            return 0;
+        size_t size = jl_gc_alloc_size(val);
+        char *addr = (char *)val;
+        for (size_t i = 0; i <= size; i++) {
+            if (jl_gc_internal_obj_base_ptr(addr + i) != val)
+                return 0;
+        }
+        return 1;
+    } else {
+        treap_t *node = treap_find(bigvals, val);
+        if (!node)
+            return 0;
+        char *addr = node->addr;
+        if ((jl_value_t *)addr != val)
+            return 0;
+        size_t size = node->size;
+        for (size_t i = 0; i <= size; i++) {
+            if (treap_find(bigvals, addr + i) != node)
+                return 0;
+        }
+        return 1;
+    }
+}
+
+typedef struct {
+    size_t size;
+    size_t capacity;
+    jl_value_t *data[1];
 } dynstack_t;
 
 static jl_datatype_t *datatype_stack_internal;
@@ -328,28 +322,32 @@ static jl_datatype_t *datatype_stack_external;
 static jl_datatype_t *datatype_stack;
 static jl_ptls_t ptls;
 
-dynstack_t *allocate_stack_mem(size_t capacity) {
-  size_t size = offsetof(dynstack_t, data) + capacity * sizeof(jl_value_t *);
-  jl_datatype_t *type = datatype_stack_internal;
-  if (size > jl_gc_max_internal_obj_size())
-    type = datatype_stack_external;
-  dynstack_t *result = (dynstack_t *) jl_gc_alloc_typed(ptls, size, type);
-  result->size = 0;
-  result->capacity = capacity;
-  return result;
+dynstack_t *allocate_stack_mem(size_t capacity)
+{
+    size_t size
+        = offsetof(dynstack_t, data) + capacity * sizeof(jl_value_t *);
+    jl_datatype_t *type = datatype_stack_internal;
+    if (size > jl_gc_max_internal_obj_size())
+        type = datatype_stack_external;
+    dynstack_t *result = (dynstack_t *)jl_gc_alloc_typed(ptls, size, type);
+    result->size = 0;
+    result->capacity = capacity;
+    return result;
 }
 
-void check_stack(const char *name, jl_value_t *p) {
-  if (jl_typeis(p, datatype_stack))
-    return;
-  jl_type_error(name, (jl_value_t *)datatype_stack, p);
+void check_stack(const char *name, jl_value_t *p)
+{
+    if (jl_typeis(p, datatype_stack))
+        return;
+    jl_type_error(name, (jl_value_t *)datatype_stack, p);
 }
 
-void check_stack_notempty(const char *name, jl_value_t *p) {
-  check_stack(name, p);
-  dynstack_t *stk = *(dynstack_t **) p;
-  if (stk->size == 0)
-    jl_errorf("%s: dynstack_t empty", name);
+void check_stack_notempty(const char *name, jl_value_t *p)
+{
+    check_stack(name, p);
+    dynstack_t *stk = *(dynstack_t **)p;
+    if (stk->size == 0)
+        jl_errorf("%s: dynstack_t empty", name);
 }
 
 // Stacks use double indirection in order to be resizable.
@@ -362,78 +360,85 @@ void check_stack_notempty(const char *name, jl_value_t *p) {
 
 // Create a new stack object
 
-JL_DLLEXPORT jl_value_t * stk_make() {
-  jl_value_t *hdr = jl_gc_alloc_typed(ptls, sizeof(jl_value_t *),
-    datatype_stack);
-  JL_GC_PUSH1(hdr);
-  *(dynstack_t **)hdr = NULL;
-  dynstack_t *stk = allocate_stack_mem(8);
-  *(dynstack_t **)hdr = stk;
-  jl_gc_set_needs_foreign_finalizer((jl_value_t *)(stk));
-  JL_GC_POP();
-  return hdr;
+JL_DLLEXPORT jl_value_t *stk_make()
+{
+    jl_value_t *hdr
+        = jl_gc_alloc_typed(ptls, sizeof(jl_value_t *), datatype_stack);
+    JL_GC_PUSH1(hdr);
+    *(dynstack_t **)hdr = NULL;
+    dynstack_t *stk = allocate_stack_mem(8);
+    *(dynstack_t **)hdr = stk;
+    jl_gc_set_needs_foreign_finalizer((jl_value_t *)(stk));
+    JL_GC_POP();
+    return hdr;
 }
 
 // Return a pointer to the inner `dynstack_t` struct.
 
-JL_DLLEXPORT jl_value_t * stk_blob(jl_value_t *s) {
-  return (jl_value_t *)(*(dynstack_t **)s);
+JL_DLLEXPORT jl_value_t *stk_blob(jl_value_t *s)
+{
+    return (jl_value_t *)(*(dynstack_t **)s);
 }
 
 // Push `v` on `s`.
 
-JL_DLLEXPORT void stk_push(jl_value_t *s, jl_value_t *v) {
-  check_stack("push", s);
-  dynstack_t *stk = *(dynstack_t **) s;
-  if (stk->size < stk->capacity) {
-    stk->data[stk->size++] = v;
-    jl_gc_wb((jl_value_t *)stk, v);
-  } else {
-    dynstack_t *newstk = allocate_stack_mem(stk->capacity * 3 / 2 + 1);
-    newstk->size = stk->size;
-    memcpy(newstk->data, stk->data, sizeof(jl_value_t *) * stk->size);
-    *(dynstack_t **)s = newstk;
-    newstk->data[newstk->size++] = v;
-    jl_gc_set_needs_foreign_finalizer((jl_value_t *)(newstk));
-    jl_gc_wb_back((jl_value_t *)newstk);
-    jl_gc_wb(s, (jl_value_t *) newstk);
-  }
+JL_DLLEXPORT void stk_push(jl_value_t *s, jl_value_t *v)
+{
+    check_stack("push", s);
+    dynstack_t *stk = *(dynstack_t **)s;
+    if (stk->size < stk->capacity) {
+        stk->data[stk->size++] = v;
+        jl_gc_wb((jl_value_t *)stk, v);
+    } else {
+        dynstack_t *newstk = allocate_stack_mem(stk->capacity * 3 / 2 + 1);
+        newstk->size = stk->size;
+        memcpy(newstk->data, stk->data, sizeof(jl_value_t *) * stk->size);
+        *(dynstack_t **)s = newstk;
+        newstk->data[newstk->size++] = v;
+        jl_gc_set_needs_foreign_finalizer((jl_value_t *)(newstk));
+        jl_gc_wb_back((jl_value_t *)newstk);
+        jl_gc_wb(s, (jl_value_t *)newstk);
+    }
 }
 
 // Return top value from `s`. Raise error if not empty.
 
-JL_DLLEXPORT jl_value_t *stk_top(jl_value_t *s) {
-  check_stack_notempty("top", s);
-  dynstack_t *stk = *(dynstack_t **) s;
-  return stk->data[stk->size-1];
+JL_DLLEXPORT jl_value_t *stk_top(jl_value_t *s)
+{
+    check_stack_notempty("top", s);
+    dynstack_t *stk = *(dynstack_t **)s;
+    return stk->data[stk->size - 1];
 }
 
 // Pop a value from `s` and return it. Raise error if not empty.
 
-JL_DLLEXPORT jl_value_t *stk_pop(jl_value_t *s) {
-  check_stack_notempty("pop", s);
-  dynstack_t *stk = *(dynstack_t **) s;
-  stk->size--;
-  return stk->data[stk->size];
+JL_DLLEXPORT jl_value_t *stk_pop(jl_value_t *s)
+{
+    check_stack_notempty("pop", s);
+    dynstack_t *stk = *(dynstack_t **)s;
+    stk->size--;
+    return stk->data[stk->size];
 }
 
 // Number of objects on the stack.
 
-JL_DLLEXPORT size_t stk_size(jl_value_t *s) {
-  check_stack("empty", s);
-  dynstack_t *stk = *(dynstack_t **) s;
-  return stk->size;
+JL_DLLEXPORT size_t stk_size(jl_value_t *s)
+{
+    check_stack("empty", s);
+    dynstack_t *stk = *(dynstack_t **)s;
+    return stk->size;
 }
 
 static jl_module_t *module;
 
 // Mark auxiliary roots.
 
-void root_scanner(int full) {
-  for (int i = 0; i < NAUXROOTS; i++) {
-    if (aux_roots[i])
-      jl_gc_mark_queue_obj(ptls, aux_roots[i]);
-  }
+void root_scanner(int full)
+{
+    for (int i = 0; i < NAUXROOTS; i++) {
+        if (aux_roots[i])
+            jl_gc_mark_queue_obj(ptls, aux_roots[i]);
+    }
 }
 
 // Hooks to run before and after GC.
@@ -441,54 +446,56 @@ void root_scanner(int full) {
 // As a simple example, we only track counters for full
 // and partial collections.
 
-void pre_gc(int full) {
-  if (full)
-    gc_counter_full++;
-  else
-    gc_counter_inc++;
+void pre_gc(int full)
+{
+    if (full)
+        gc_counter_full++;
+    else
+        gc_counter_inc++;
 }
 
-void post_gc(int full) {
-}
+void post_gc(int full) {}
 
 // Mark the outer stack object (containing only a pointer to the data).
 
-uintptr_t mark_stack(jl_ptls_t ptls, jl_value_t *p) {
-  if (!*(void **)p)
-    return 0;
-  return jl_gc_mark_queue_obj(ptls, *(jl_value_t **)p) != 0;
+uintptr_t mark_stack(jl_ptls_t ptls, jl_value_t *p)
+{
+    if (!*(void **)p)
+        return 0;
+    return jl_gc_mark_queue_obj(ptls, *(jl_value_t **)p) != 0;
 }
 
 // Mark the actual stack data.
 // This is used both for `StackData` and `StackDataLarge`.
 
-uintptr_t mark_stack_data(jl_ptls_t ptls, jl_value_t *p) {
-  dynstack_t *stk = (dynstack_t *)p;
-  uintptr_t n = 0;
-  for (size_t i = 0; i < stk->size; i++) {
-    if (jl_gc_mark_queue_obj(ptls, stk->data[i]))
-      n++;
-  }
-  return n;
+uintptr_t mark_stack_data(jl_ptls_t ptls, jl_value_t *p)
+{
+    dynstack_t *stk = (dynstack_t *)p;
+    uintptr_t n = 0;
+    for (size_t i = 0; i < stk->size; i++) {
+        if (jl_gc_mark_queue_obj(ptls, stk->data[i]))
+            n++;
+    }
+    return n;
 }
 
-void finalize_stack_data(jl_value_t *p) {
-  finalizer_calls++;
-  dynstack_t *stk = (dynstack_t *)p;
-  if (stk->size > stk->capacity)
-    jl_error("internal error during finalization");
+void finalize_stack_data(jl_value_t *p)
+{
+    finalizer_calls++;
+    dynstack_t *stk = (dynstack_t *)p;
+    if (stk->size > stk->capacity)
+        jl_error("internal error during finalization");
 }
 
 // Safely execute Julia code
 
-jl_value_t *checked_eval_string(const char* code)
+jl_value_t *checked_eval_string(const char *code)
 {
     jl_value_t *result = jl_eval_string(code);
     if (jl_exception_occurred()) {
         // none of these allocate, so a gc-root (JL_GC_PUSH) is not necessary
         jl_call2(jl_get_function(jl_base_module, "showerror"),
-                 jl_stderr_obj(),
-                 jl_exception_occurred());
+            jl_stderr_obj(), jl_exception_occurred());
         jl_printf(jl_stderr_stream(), "\n");
         jl_atexit_hook(1);
         exit(1);
@@ -497,46 +504,48 @@ jl_value_t *checked_eval_string(const char* code)
     return result;
 }
 
-int main() {
-  // Install callbacks. This should happen before `jl_init()` and
-  // before any GC is called.
+int main()
+{
+    // Install callbacks. This should happen before `jl_init()` and
+    // before any GC is called.
 
-  jl_gc_register_callback(jl_gc_cb_external_alloc, alloc_bigval);
-  jl_gc_register_callback(jl_gc_cb_external_free, free_bigval);
+    jl_gc_register_callback(jl_gc_cb_external_alloc, alloc_bigval);
+    jl_gc_register_callback(jl_gc_cb_external_free, free_bigval);
 
-  jl_init();
-  ptls = jl_get_ptls_states();
-  jl_gc_register_callback(jl_gc_cb_root_scanner, root_scanner);
-  jl_gc_register_callback(jl_gc_cb_pre_gc, pre_gc);
-  jl_gc_register_callback(jl_gc_cb_post_gc, post_gc);
-  // Create module to store types in.
-  module = jl_new_module(jl_symbol("TestGCExt"));
-  module->parent = jl_main_module;
-  jl_set_const(jl_main_module, jl_symbol("TestGCExt"), (jl_value_t *)module);
-  // Define Julia types for our stack implementation.
-  datatype_stack = jl_new_foreign_type(jl_symbol("Stack"),
-    module, jl_any_type, mark_stack, NULL, 1, 0);
-  jl_set_const(module, jl_symbol("Stack"), (jl_value_t *) datatype_stack);
-  datatype_stack_internal = jl_new_foreign_type(jl_symbol("StackData"),
-    module, jl_any_type, mark_stack_data, finalize_stack_data, 1, 0);
-  jl_set_const(module, jl_symbol("StackData"),
-    (jl_value_t *) datatype_stack_internal);
-  datatype_stack_external = jl_new_foreign_type(jl_symbol("StackDataLarge"),
-    module, jl_any_type, mark_stack_data, finalize_stack_data, 1, 1);
-  jl_set_const(module, jl_symbol("StackDataLarge"),
-    (jl_value_t *) datatype_stack_external);
-  // Remember the offset of external objects
-  bigval_startoffset = jl_gc_external_obj_hdr_size();
-  // Run the actual tests
-  checked_eval_string(
-  "let dir = dirname(unsafe_string(Base.JLOptions().julia_bin))\n"
-  // disable the package manager
-  "    ENV[\"JULIA_PKGDIR\"] = joinpath(dir, \"disabled\")\n"
-  // locate files relative to the "embedding" executable
-  "    stdlib = filter(env -> startswith(Base.find_package(Base, \"Distributed\"), env), Base.load_path())[end]\n"
-  "    push!(empty!(LOAD_PATH), dir, stdlib)\n"
-  "end"
-  );
+    jl_init();
+    ptls = jl_get_ptls_states();
+    jl_gc_register_callback(jl_gc_cb_root_scanner, root_scanner);
+    jl_gc_register_callback(jl_gc_cb_pre_gc, pre_gc);
+    jl_gc_register_callback(jl_gc_cb_post_gc, post_gc);
+    // Create module to store types in.
+    module = jl_new_module(jl_symbol("TestGCExt"));
+    module->parent = jl_main_module;
+    jl_set_const(
+        jl_main_module, jl_symbol("TestGCExt"), (jl_value_t *)module);
+    // Define Julia types for our stack implementation.
+    datatype_stack = jl_new_foreign_type(
+        jl_symbol("Stack"), module, jl_any_type, mark_stack, NULL, 1, 0);
+    jl_set_const(module, jl_symbol("Stack"), (jl_value_t *)datatype_stack);
+    datatype_stack_internal = jl_new_foreign_type(jl_symbol("StackData"),
+        module, jl_any_type, mark_stack_data, finalize_stack_data, 1, 0);
+    jl_set_const(module, jl_symbol("StackData"),
+        (jl_value_t *)datatype_stack_internal);
+    datatype_stack_external = jl_new_foreign_type(jl_symbol("StackDataLarge"),
+        module, jl_any_type, mark_stack_data, finalize_stack_data, 1, 1);
+    jl_set_const(module, jl_symbol("StackDataLarge"),
+        (jl_value_t *)datatype_stack_external);
+    // Remember the offset of external objects
+    bigval_startoffset = jl_gc_external_obj_hdr_size();
+    // Run the actual tests
+    checked_eval_string(
+        "let dir = dirname(unsafe_string(Base.JLOptions().julia_bin))\n"
+        // disable the package manager
+        "    ENV[\"JULIA_PKGDIR\"] = joinpath(dir, \"disabled\")\n"
+        // locate files relative to the "embedding" executable
+        "    stdlib = filter(env -> startswith(Base.find_package(Base, "
+        "\"Distributed\"), env), Base.load_path())[end]\n"
+        "    push!(empty!(LOAD_PATH), dir, stdlib)\n"
+        "end");
 
-  checked_eval_string("import LocalTest");
+    checked_eval_string("import LocalTest");
 }

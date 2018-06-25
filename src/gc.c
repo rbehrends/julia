@@ -13,7 +13,7 @@ typedef struct jl_gc_callback_list_t {
     jl_gc_cb_func_t func;
 } jl_gc_callback_list_t;
 
-static jl_gc_callback_list_t * gc_callbacks[jl_gc_num_callbacks];
+static jl_gc_callback_list_t *gc_callbacks[jl_gc_num_callbacks];
 
 #define gc_invoke_callbacks(kind, args) \
     do { \
@@ -26,12 +26,13 @@ static jl_gc_callback_list_t * gc_callbacks[jl_gc_num_callbacks];
     } while (0)
 
 JL_DLLEXPORT void _jl_gc_register_callback(jl_gc_callback_t kind,
-        jl_gc_cb_func_t func) {
+        jl_gc_cb_func_t func)
+{
     jl_gc_callback_list_t **list = gc_callbacks + kind;
     while (*list != NULL) {
-       if ((*list)->func == func)
-           return;
-       list = &((*list)->next);
+        if ((*list)->func == func)
+            return;
+        list = &((*list)->next);
     }
     *list = (jl_gc_callback_list_t *)malloc(sizeof(jl_gc_callback_list_t));
     (*list)->next = NULL;
@@ -39,7 +40,8 @@ JL_DLLEXPORT void _jl_gc_register_callback(jl_gc_callback_t kind,
 }
 
 JL_DLLEXPORT void _jl_gc_deregister_callback(jl_gc_callback_t kind,
-        jl_gc_cb_func_t func) {
+        jl_gc_cb_func_t func)
+{
     jl_gc_callback_list_t **list = gc_callbacks + kind;
     while (*list != NULL) {
         if ((*list)->func == func) {
