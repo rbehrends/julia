@@ -77,7 +77,8 @@ treap_t *alloc_treap(void)
     if (treap_free_list) {
         result = treap_free_list;
         treap_free_list = treap_free_list->right;
-    } else
+    }
+    else
         result = malloc(sizeof(treap_t));
     result->left = NULL;
     result->right = NULL;
@@ -161,14 +162,16 @@ static void treap_insert(treap_t **treap, treap_t *val)
         L(val) = NULL;
         R(val) = NULL;
         *treap = val;
-    } else {
+    }
+    else {
         int c = cmp_ptr(val->addr, t->addr);
         if (c < 0) {
             treap_insert(&L(t), val);
             if (L(t)->prio > t->prio) {
                 treap_rot_right(treap);
             }
-        } else if (c > 0) {
+        }
+        else if (c > 0) {
             treap_insert(&R(t), val);
             if (R(t)->prio > t->prio) {
                 treap_rot_left(treap);
@@ -185,15 +188,18 @@ static void treap_delete_node(treap_t **treap)
             *treap = R(t);
             free_treap(t);
             break;
-        } else if (R(t) == NULL) {
+        }
+        else if (R(t) == NULL) {
             *treap = L(t);
             free_treap(t);
             break;
-        } else {
+        }
+        else {
             if (L(t)->prio > R(t)->prio) {
                 treap_rot_right(treap);
                 treap = &R(*treap);
-            } else {
+            }
+            else {
                 treap_rot_left(treap);
                 treap = &L(*treap);
             }
@@ -208,9 +214,11 @@ static int treap_delete(treap_t **treap, void *addr)
         if (c == 0) {
             treap_delete_node(treap);
             return 1;
-        } else if (c < 0) {
+        }
+        else if (c < 0) {
             treap = &L(*treap);
-        } else {
+        }
+        else {
             treap = &R(*treap);
         }
     }
@@ -295,7 +303,8 @@ JL_DLLEXPORT int internal_obj_scan(jl_value_t *val)
                 return 0;
         }
         return 1;
-    } else {
+    }
+    else {
         treap_t *node = treap_find(bigvals, val);
         if (!node)
             return 0;
@@ -389,7 +398,8 @@ JL_DLLEXPORT void stk_push(jl_value_t *s, jl_value_t *v)
     if (stk->size < stk->capacity) {
         stk->data[stk->size++] = v;
         jl_gc_wb((jl_value_t *)stk, v);
-    } else {
+    }
+    else {
         dynstack_t *newstk = allocate_stack_mem(stk->capacity * 3 / 2 + 1);
         newstk->size = stk->size;
         memcpy(newstk->data, stk->data, sizeof(jl_value_t *) * stk->size);
@@ -446,7 +456,7 @@ void root_scanner(int full)
 // As a simple example, we only track counters for full
 // and partial collections.
 
-void pre_gc(int full)
+void pre_gc_func(int full)
 {
     if (full)
         gc_counter_full++;
@@ -454,7 +464,8 @@ void pre_gc(int full)
         gc_counter_inc++;
 }
 
-void post_gc(int full) {}
+void post_gc_func(int full) {
+}
 
 // Mark the outer stack object (containing only a pointer to the data).
 
@@ -504,19 +515,27 @@ jl_value_t *checked_eval_string(const char *code)
     return result;
 }
 
+void abort_with_error(int full)
+{
+    abort();
+}
+
 int main()
 {
     // Install callbacks. This should happen before `jl_init()` and
     // before any GC is called.
 
-    jl_gc_register_callback(jl_gc_cb_external_alloc, alloc_bigval);
-    jl_gc_register_callback(jl_gc_cb_external_free, free_bigval);
+    jl_gc_register_callback(notify_external_alloc, alloc_bigval);
+    jl_gc_register_callback(notify_external_free, free_bigval);
 
     jl_init();
     ptls = jl_get_ptls_states();
-    jl_gc_register_callback(jl_gc_cb_root_scanner, root_scanner);
-    jl_gc_register_callback(jl_gc_cb_pre_gc, pre_gc);
-    jl_gc_register_callback(jl_gc_cb_post_gc, post_gc);
+    jl_gc_register_callback(root_scanner, root_scanner);
+    jl_gc_register_callback(pre_gc, pre_gc_func);
+    jl_gc_register_callback(post_gc, post_gc_func);
+    // Test that deregistration works
+    jl_gc_register_callback(root_scanner, abort_with_error);
+    jl_gc_deregister_callback(root_scanner, abort_with_error);
     // Create module to store types in.
     module = jl_new_module(jl_symbol("TestGCExt"));
     module->parent = jl_main_module;

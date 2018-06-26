@@ -4,17 +4,18 @@
 // requires including "julia.h" beforehand.
 
 // Kinds of callbacks. For each kind of callback, there must be
-// a corresponding type with the same name with a "_t" suffix.
+// a corresponding type with the same name, but in all lowercase,
+// and with a "_t" suffix.
 
 typedef enum {
-    jl_gc_cb_root_scanner,
-    jl_gc_cb_task_scanner,
-    jl_gc_cb_pre_gc,
-    jl_gc_cb_post_gc,
-    jl_gc_cb_external_alloc,
-    jl_gc_cb_external_free,
+    JL_GC_CB_root_scanner,
+    JL_GC_CB_task_scanner,
+    JL_GC_CB_pre_gc,
+    JL_GC_CB_post_gc,
+    JL_GC_CB_notify_external_alloc,
+    JL_GC_CB_notify_external_free,
     // number of callbacks:
-    jl_gc_num_callbacks
+    JL_GC_NUM_CALLBACKS
 } jl_gc_callback_t;
 
 typedef void (*jl_gc_cb_func_t)(void);
@@ -31,14 +32,14 @@ JL_DLLEXPORT void _jl_gc_deregister_callback(jl_gc_callback_t cb,
 
 #define jl_gc_register_callback(cb, func) \
     do { \
-        jl_gc_callback_t _cb = cb; \
-        cb##_t _func = func; \
+        jl_gc_callback_t _cb = JL_GC_CB_##cb; \
+        jl_gc_cb_##cb##_t _func = func; \
         _jl_gc_register_callback(_cb, (jl_gc_cb_func_t) _func); \
     } while (0)
 #define jl_gc_deregister_callback(cb, func) \
     do { \
-        jl_gc_callback_t _cb = cb; \
-        cb##_t _func = func; \
+        jl_gc_callback_t _cb = JL_GC_CB_##cb; \
+        jl_gc_cb_##cb##_t _func = func; \
         _jl_gc_deregister_callback(_cb, (jl_gc_cb_func_t) _func); \
     } while (0)
 
@@ -47,8 +48,8 @@ typedef void (*jl_gc_cb_root_scanner_t)(int full);
 typedef void (*jl_gc_cb_task_scanner_t)(jl_task_t *task, int full);
 typedef void (*jl_gc_cb_pre_gc_t)(int full);
 typedef void (*jl_gc_cb_post_gc_t)(int full);
-typedef void (*jl_gc_cb_external_alloc_t)(void *addr, size_t size);
-typedef void (*jl_gc_cb_external_free_t)(void *addr);
+typedef void (*jl_gc_cb_notify_external_alloc_t)(void *addr, size_t size);
+typedef void (*jl_gc_cb_notify_external_free_t)(void *addr);
 
 // Types for mark and finalize functions.
 // We make the cache and sp parameters opaque so that the internals
