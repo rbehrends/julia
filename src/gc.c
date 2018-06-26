@@ -1,11 +1,62 @@
 // This file is a part of Julia. License is MIT: https://julialang.org/license
 
 #include "gc.h"
+#include "julia_gcext.h"
 #include "julia_assert.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// Linked list of callback functions
+
+typedef struct jl_gc_callback_list_t {
+    struct jl_gc_callback_list_t *next;
+    jl_gc_cb_func_t func;
+} jl_gc_callback_list_t;
+
+static jl_gc_callback_list_t *gc_callbacks[JL_GC_NUM_CALLBACKS];
+
+#define gc_invoke_callbacks(kind, args) \
+    do { \
+        for (jl_gc_callback_list_t *cb = gc_callbacks[JL_GC_CB_##kind]; \
+                cb != NULL; \
+                cb = cb->next) \
+        { \
+            ((jl_gc_cb_##kind##_t)(cb->func)) args; \
+        } \
+    } while (0)
+
+JL_DLLEXPORT void _jl_gc_register_callback(jl_gc_callback_t kind,
+        jl_gc_cb_func_t func)
+{
+    jl_gc_callback_list_t **list = gc_callbacks + kind;
+    while (*list != NULL) {
+        if ((*list)->func == func)
+            return;
+        list = &((*list)->next);
+    }
+    *list = (jl_gc_callback_list_t *)malloc(sizeof(jl_gc_callback_list_t));
+    (*list)->next = NULL;
+    (*list)->func = func;
+}
+
+JL_DLLEXPORT void _jl_gc_deregister_callback(jl_gc_callback_t kind,
+        jl_gc_cb_func_t func)
+{
+    jl_gc_callback_list_t **list = gc_callbacks + kind;
+    while (*list != NULL) {
+        if ((*list)->func == func) {
+            jl_gc_callback_list_t *tmp = *list;
+            (*list) = (*list)->next;
+            free(tmp);
+            return;
+        }
+        list = &((*list)->next);
+    }
+}
+
+static gc_mark_sp_t **gc_current_sp;
 
 // Protect all access to `finalizer_list_marked` and `to_finalize`.
 // For accessing `ptls->finalizers`, the lock is needed if a thread
@@ -109,7 +160,18 @@ static void run_finalizer(jl_ptls_t ptls, jl_value_t *o, jl_value_t *ff)
     JL_TRY {
         size_t last_age = jl_get_ptls_states()->world_age;
         jl_get_ptls_states()->world_age = jl_world_counter;
-        jl_apply(args, 2);
+        if (ff == jl_nothing) {
+            // This is the case for finalizers written in C.
+            jl_datatype_t *dt = (jl_datatype_t*)jl_typeof(o);
+            const jl_datatype_layout_t *layout = dt->layout;
+            assert(layout->fielddesc_type == 3);
+            jl_fielddescdyn_t *desc = (jl_fielddescdyn_t*)jl_dt_layout_fields(layout);
+            assert(desc->finalizefunc != 0);
+            desc->finalizefunc(o);
+        }
+        else {
+            jl_apply(args, 2);
+        }
         jl_get_ptls_states()->world_age = last_age;
     }
     JL_CATCH {
@@ -748,6 +810,7 @@ JL_DLLEXPORT jl_value_t *jl_gc_big_alloc(jl_ptls_t ptls, size_t sz)
     if (allocsz < sz)  // overflow in adding offs, size was "negative"
         jl_throw(jl_memory_exception);
     bigval_t *v = (bigval_t*)malloc_cache_align(allocsz);
+    gc_invoke_callbacks(notify_external_alloc, (v, allocsz));
     if (v == NULL)
         jl_throw(jl_memory_exception);
 #ifdef JULIA_ENABLE_THREADING
@@ -798,6 +861,7 @@ static bigval_t **sweep_big_list(int sweep_full, bigval_t **pv)
 #ifdef MEMDEBUG
             memset(v, 0xbb, v->sz&~3);
 #endif
+            gc_invoke_callbacks(notify_external_free, (v));
             jl_free_aligned(v);
         }
         gc_time_count_big(old_bits, bits);
@@ -1490,6 +1554,11 @@ STATIC_INLINE int gc_mark_queue_obj(jl_gc_mark_cache_t *gc_cache, gc_mark_sp_t *
     return (int)nptr;
 }
 
+JL_DLLEXPORT int jl_gc_mark_queue_obj(jl_ptls_t ptls, jl_value_t *obj)
+{
+    return gc_mark_queue_obj(&ptls->gc_cache, gc_current_sp[ptls->tid], obj);
+}
+
 // Check if `nptr` is tagged for `old + refyoung`,
 // Push the object to the remset and update the `nptr` counter if necessary.
 STATIC_INLINE void gc_mark_push_remset(jl_ptls_t ptls, jl_value_t *obj, uintptr_t nptr)
@@ -1756,6 +1825,8 @@ JL_EXTENSION NOINLINE void gc_mark_loop(jl_ptls_t ptls, gc_mark_sp_t sp)
         gc_mark_label_addrs[GC_MARK_L_module_binding] = gc_mark_laddr(module_binding);
         return;
     }
+
+    gc_current_sp[ptls->tid] = &sp;
 
     jl_value_t *new_obj = NULL;
     uintptr_t tag = 0;
@@ -2124,6 +2195,7 @@ mark: {
             int stkbuf = (ta->stkbuf != (void*)(intptr_t)-1 && ta->stkbuf != NULL);
             int16_t tid = ta->tid;
             jl_ptls_t ptls2 = jl_all_tls_states[tid];
+            gc_invoke_callbacks(task_scanner, (ta, ta == ptls2->root_task));
             if (stkbuf) {
 #ifdef COPY_STACKS
                 gc_setmark_buf_(ptls, ta->stkbuf, bits, ta->bufsz);
@@ -2222,7 +2294,7 @@ mark: {
                 obj16 = (gc_mark_obj16_t*)sp.data;
                 goto obj16_loaded;
             }
-            else {
+            else if (layout->fielddesc_type == 2) {
                 // This is very uncommon
                 // Do not do store to load forwarding to save some code size
                 assert(layout->fielddesc_type == 2);
@@ -2233,6 +2305,16 @@ mark: {
                                    &markdata, sizeof(markdata), 0);
                 sp.data = (jl_gc_mark_data_t *)(((char*)sp.data) + sizeof(markdata));
                 goto obj32;
+            }
+            else {
+                assert(layout->fielddesc_type == 3);
+                jl_fielddescdyn_t *desc = (jl_fielddescdyn_t*)jl_dt_layout_fields(layout);
+
+                int old = jl_astaggedvalue(new_obj)->bits.gc & 2;
+                uintptr_t young = desc->markfunc(ptls, new_obj);
+                if (old && young)
+                    gc_mark_push_remset(ptls, new_obj, young * 4 + 3);
+                goto pop;
             }
         }
     }
@@ -2459,6 +2541,8 @@ static int _jl_gc_collect(jl_ptls_t ptls, int full)
     gc_mark_sp_t sp;
     gc_mark_sp_init(gc_cache, &sp);
 
+    gc_current_sp[ptls->tid] = &sp;
+
     uint64_t t0 = jl_hrtime();
     int64_t last_perm_scanned_bytes = perm_scanned_bytes;
 
@@ -2478,6 +2562,7 @@ static int _jl_gc_collect(jl_ptls_t ptls, int full)
 
     // 3. walk roots
     mark_roots(gc_cache, &sp);
+    gc_invoke_callbacks(root_scanner, (full));
     gc_mark_loop(ptls, sp);
     gc_mark_sp_init(gc_cache, &sp);
     gc_num.since_sweep += gc_num.allocd + (int64_t)gc_num.interval;
@@ -2617,6 +2702,7 @@ static int _jl_gc_collect(jl_ptls_t ptls, int full)
 
 JL_DLLEXPORT void jl_gc_collect(int full)
 {
+    gc_invoke_callbacks(pre_gc, (full));
     jl_ptls_t ptls = jl_get_ptls_states();
     if (jl_gc_disable_counter) {
         gc_num.deferred_alloc += (gc_num.allocd + gc_num.interval);
@@ -2664,6 +2750,7 @@ JL_DLLEXPORT void jl_gc_collect(int full)
         run_finalizers(ptls);
         ptls->in_finalizer = was_in_finalizer;
     }
+    gc_invoke_callbacks(post_gc, (full));
 }
 
 void gc_mark_queue_all_roots(jl_ptls_t ptls, gc_mark_sp_t *sp)
@@ -2735,6 +2822,7 @@ void jl_gc_init(void)
     if (maxmem > max_collect_interval)
         max_collect_interval = maxmem;
 #endif
+    gc_current_sp = (gc_mark_sp_t **)jl_malloc_aligned(jl_n_threads * sizeof(gc_mark_sp_t *), 64);
     gc_mark_sp_t sp = {NULL, NULL, NULL, NULL};
     gc_mark_loop(NULL, sp);
 }
@@ -3047,6 +3135,120 @@ JL_DLLEXPORT jl_value_t *jl_gc_alloc_3w(void)
 {
     jl_ptls_t ptls = jl_get_ptls_states();
     return jl_gc_alloc(ptls, sizeof(void*) * 3, NULL);
+}
+
+STATIC_INLINE int is_valid_tag(void *p)
+{
+    jl_gc_pagemeta_t *meta = page_metadata(p);
+    if (!meta || !meta->ages)
+       return 0;
+
+    char *page = gc_page_data(p);
+    size_t off = (char *)p - page;
+    off -= GC_PAGE_OFFSET;
+    return off % meta->osize == 0;
+}
+
+STATIC_INLINE int is_valid_pool_obj(jl_taggedvalue_t *val)
+{
+    jl_value_t *datatype_type = (jl_value_t *)jl_datatype_type;
+    if (val->next == NULL)
+        return 0; // end of free list
+    val = (jl_taggedvalue_t *) gc_ptr_clear_tag(val, 3);
+    if (jl_valueof(val->next) == datatype_type)
+        return 1; // a type
+    jl_value_t *next = (jl_value_t *) gc_ptr_clear_tag(val->next, 3);
+    val = jl_astaggedvalue(next);
+    if (!is_valid_tag(val))
+        return 0;
+
+    // We now follow the header link. This must be either part
+    // of the free list (including NULL) or a type reference.
+    if (val->next == NULL)
+        return 0;
+    next = (jl_value_t *) gc_ptr_clear_tag(val->next, 3);
+    if (next == datatype_type)
+        return 1;
+    return 0;
+}
+
+
+JL_DLLEXPORT int jl_gc_is_internal_obj_alloc(jl_value_t *p)
+{
+    jl_gc_pagemeta_t *meta = page_metadata(p);
+    if (meta && meta->ages) {
+        char* page = gc_page_data(p);
+        // offset within page.
+        size_t off = (char*)p - page;
+        if (off < GC_PAGE_OFFSET)
+            return 0;
+        // offset within object
+        size_t off2 = (off - GC_PAGE_OFFSET);
+        size_t osize = meta->osize;
+        // if (osize == 0) return NULL;
+        off2 %= osize;
+        if (off2 != sizeof(jl_taggedvalue_t))
+            return 0;
+        if (off - off2 + osize > GC_PAGE_SZ)
+            return 0;
+        return 1;
+    }
+    return 0;
+}
+
+JL_DLLEXPORT size_t jl_gc_alloc_size(jl_value_t *p) {
+    jl_gc_pagemeta_t *meta = page_metadata(p);
+    if (meta)
+        return meta->osize - sizeof(jl_taggedvalue_t);
+    else { // bigval
+        bigval_t *b = (bigval_t *)((char *) p - sizeof(bigval_t));
+        return b->sz;
+    }
+}
+
+JL_DLLEXPORT jl_value_t *jl_gc_internal_obj_base_ptr(void *p)
+{
+    p = (char *) p - 1;
+    jl_gc_pagemeta_t *meta = page_metadata(p);
+    if (meta && meta->ages) {
+        char *page = gc_page_data(p);
+        // offset within page.
+        size_t off = (char *)p - page;
+        if (off < GC_PAGE_OFFSET)
+            return NULL;
+        // offset within object
+        size_t off2 = (off - GC_PAGE_OFFSET);
+        size_t osize = meta->osize;
+        off2 %= osize;
+        if (off - off2 + osize > GC_PAGE_SZ)
+            return NULL;
+        jl_taggedvalue_t *val = (jl_taggedvalue_t *)((char *)p - off2);
+        if (!is_valid_pool_obj(val))
+            return NULL;
+        return jl_valueof(val);
+    }
+    return NULL;
+}
+
+JL_DLLEXPORT size_t jl_gc_max_internal_obj_size(void)
+{
+    return GC_MAX_SZCLASS;
+}
+
+JL_DLLEXPORT size_t jl_gc_external_obj_hdr_size(void)
+{
+    return sizeof(bigval_t);
+}
+
+
+JL_DLLEXPORT void * jl_gc_alloc_typed(jl_ptls_t ptls, size_t sz, void *ty)
+{
+    return jl_gc_alloc(ptls, sz, ty);
+}
+
+JL_DLLEXPORT void jl_gc_set_needs_foreign_finalizer(jl_value_t *obj)
+{
+    jl_gc_add_finalizer((jl_value_t *)obj, jl_nothing);
 }
 
 #ifdef __cplusplus
