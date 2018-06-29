@@ -531,6 +531,7 @@ int main()
     jl_gc_register_callback(notify_external_alloc, alloc_bigval);
     jl_gc_register_callback(notify_external_free, free_bigval);
 
+    jl_gc_enable_conservative_scanning();
     jl_init();
     ptls = jl_get_ptls_states();
     jl_gc_register_callback(root_scanner, root_scanner);

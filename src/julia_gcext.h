@@ -72,6 +72,12 @@ JL_DLLEXPORT jl_datatype_t *jl_new_foreign_type(
 JL_DLLEXPORT size_t jl_gc_max_internal_obj_size(void);
 JL_DLLEXPORT size_t jl_gc_external_obj_hdr_size(void);
 
+// The following function must be called to enable conservative
+// scanning, i.e. if you wish to use `jl_gc_internal_obj_base_ptr()`
+// or `jl_gc_is_internal_obj_alloc()`. It has to be called before
+// calling `jl_init()`.
+JL_DLLEXPORT void jl_gc_enable_conservative_scanning();
+
 // Returns the base address of a memory block, assuming it
 // is stored in a julia memory pool. Return NULL otherwise.
 JL_DLLEXPORT jl_value_t *jl_gc_internal_obj_base_ptr(void *p);
