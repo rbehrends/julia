@@ -23,7 +23,7 @@ static int block_pg_cnt = DEFAULT_BLOCK_PG_ALLOC;
 static size_t current_pg_count = 0;
 static int permit_conservative_scans = 0;
 
-JL_DLLEXPORT void jl_gc_enable_conservative_scanning()
+JL_DLLEXPORT void jl_gc_enable_conservative_scanning(void)
 {
     permit_conservative_scans = 1;
 }

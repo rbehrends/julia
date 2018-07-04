@@ -34,7 +34,7 @@ end
     @test length(lines) == 6
     @test checknum(lines[2], r"([0-9]+) full collections", n -> n >= 10)
     @test checknum(lines[3], r"([0-9]+) partial collections", n -> n > 0)
-    @test checknum(lines[4], r"([0-9]+) finalizer calls", n -> n > 0)
+    @test checknum(lines[4], r"([0-9]+) object sweeps", n -> n > 0)
     @test checknum(lines[5], r"([0-9]+) internal object scan failures",
         n -> n == 0)
     @test checknum(lines[6], r"([0-9]+) corrupted auxiliary roots",

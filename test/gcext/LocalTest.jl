@@ -32,8 +32,8 @@ module LocalTest
   function gc_counter()
     return gc_counter_full() + gc_counter_inc()
   end
-  function num_finalizer_calls()
-    return ccall(:get_finalizer_calls, UInt, ())
+  function num_obj_sweeps()
+    return ccall(:get_obj_sweeps, UInt, ())
   end
   function get_aux_root(n :: Int)
     return ccall(:get_aux_root, String, (UInt,), n)
@@ -79,7 +79,7 @@ module LocalTest
   @time test()
   print(gc_counter_full(), " full collections.\n")
   print(gc_counter_inc(), " partial collections.\n")
-  print(num_finalizer_calls(), " finalizer calls.\n")
+  print(num_obj_sweeps(), " object sweeps.\n")
   print(internal_obj_scan_failures, " internal object scan failures.\n")
   print(corrupted_roots, " corrupted auxiliary roots.\n")
 end

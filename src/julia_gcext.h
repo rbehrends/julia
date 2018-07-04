@@ -51,20 +51,20 @@ typedef void (*jl_gc_cb_post_gc_t)(int full);
 typedef void (*jl_gc_cb_notify_external_alloc_t)(void *addr, size_t size);
 typedef void (*jl_gc_cb_notify_external_free_t)(void *addr);
 
-// Types for mark and finalize functions.
+// Types for mark and sweep functions.
 // We make the cache and sp parameters opaque so that the internals
 // do not get exposed.
 typedef uintptr_t (*jl_markfunc_t)(jl_ptls_t, jl_value_t *obj);
-typedef void (*jl_finalizefunc_t)(jl_value_t *obj);
+typedef void (*jl_sweepfunc_t)(jl_value_t *obj);
 
 // Function to create a new foreign type with custom
-// mark and finalize functions.
+// mark and sweep functions.
 JL_DLLEXPORT jl_datatype_t *jl_new_foreign_type(
   jl_sym_t *name,
   jl_module_t *module,
   jl_datatype_t *super,
   jl_markfunc_t markfunc,
-  jl_finalizefunc_t finalizefunc,
+  jl_sweepfunc_t sweepfunc,
   int haspointers,
   int large
 );
@@ -76,7 +76,7 @@ JL_DLLEXPORT size_t jl_gc_external_obj_hdr_size(void);
 // scanning, i.e. if you wish to use `jl_gc_internal_obj_base_ptr()`
 // or `jl_gc_is_internal_obj_alloc()`. It has to be called before
 // calling `jl_init()`.
-JL_DLLEXPORT void jl_gc_enable_conservative_scanning();
+JL_DLLEXPORT void jl_gc_enable_conservative_scanning(void);
 
 // Returns the base address of a memory block, assuming it
 // is stored in a julia memory pool. Return NULL otherwise.
@@ -100,12 +100,12 @@ JL_DLLEXPORT size_t jl_gc_alloc_size(jl_value_t *p);
 
 typedef struct {
     jl_markfunc_t markfunc;
-    jl_finalizefunc_t finalizefunc;
+    jl_sweepfunc_t sweepfunc;
 } jl_fielddescdyn_t;
 
 JL_DLLEXPORT void *jl_gc_alloc_typed(jl_ptls_t ptls, size_t sz, void *ty);
 JL_DLLEXPORT int jl_gc_mark_queue_obj(jl_ptls_t ptls, jl_value_t *obj);
 
-JL_DLLEXPORT void jl_gc_set_needs_foreign_finalizer(jl_value_t *obj);
+JL_DLLEXPORT void jl_gc_enable_foreign_sweepfunc(jl_ptls_t ptls, jl_value_t * bj);
 
 #endif // _JULIA_GCEXT_H

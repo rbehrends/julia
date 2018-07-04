@@ -287,11 +287,11 @@ JL_DLLEXPORT size_t get_gc_counter(int full)
         return gc_counter_inc;
 }
 
-static size_t finalizer_calls = 0;
+static size_t obj_sweeps = 0;
 
-JL_DLLEXPORT size_t get_finalizer_calls()
+JL_DLLEXPORT size_t get_obj_sweeps()
 {
-    return finalizer_calls;
+    return obj_sweeps;
 }
 
 JL_DLLEXPORT int internal_obj_scan(jl_value_t *val)
@@ -379,7 +379,7 @@ JL_DLLEXPORT jl_value_t *stk_make()
     *(dynstack_t **)hdr = NULL;
     dynstack_t *stk = allocate_stack_mem(8);
     *(dynstack_t **)hdr = stk;
-    jl_gc_set_needs_foreign_finalizer((jl_value_t *)(stk));
+    jl_gc_enable_foreign_sweepfunc(ptls, (jl_value_t *)(stk));
     JL_GC_POP();
     return hdr;
 }
@@ -407,7 +407,7 @@ JL_DLLEXPORT void stk_push(jl_value_t *s, jl_value_t *v)
         memcpy(newstk->data, stk->data, sizeof(jl_value_t *) * stk->size);
         *(dynstack_t **)s = newstk;
         newstk->data[newstk->size++] = v;
-        jl_gc_set_needs_foreign_finalizer((jl_value_t *)(newstk));
+        jl_gc_enable_foreign_sweepfunc(ptls, (jl_value_t *)(newstk));
         jl_gc_wb_back((jl_value_t *)newstk);
         jl_gc_wb(s, (jl_value_t *)newstk);
     }
@@ -491,12 +491,12 @@ uintptr_t mark_stack_data(jl_ptls_t ptls, jl_value_t *p)
     return n;
 }
 
-void finalize_stack_data(jl_value_t *p)
+void sweep_stack_data(jl_value_t *p)
 {
-    finalizer_calls++;
+    obj_sweeps++;
     dynstack_t *stk = (dynstack_t *)p;
     if (stk->size > stk->capacity)
-        jl_error("internal error during finalization");
+        jl_error("internal error during sweeping");
 }
 
 // Safely execute Julia code
@@ -553,7 +553,7 @@ int main()
             module,
             jl_any_type,
             mark_stack_data,
-            finalize_stack_data,
+            sweep_stack_data,
             1,
             0);
     jl_set_const(
@@ -565,7 +565,7 @@ int main()
             module,
             jl_any_type,
             mark_stack_data,
-            finalize_stack_data,
+            sweep_stack_data,
             1,
             1);
     jl_set_const(
