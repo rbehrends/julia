@@ -105,6 +105,8 @@ typedef struct {
 
 JL_DLLEXPORT void *jl_gc_alloc_typed(jl_ptls_t ptls, size_t sz, void *ty);
 JL_DLLEXPORT int jl_gc_mark_queue_obj(jl_ptls_t ptls, jl_value_t *obj);
+JL_DLLEXPORT void jl_gc_mark_queue_objarray(jl_ptls_t ptls, jl_value_t *parent,
+    jl_value_t **objs, size_t nobjs);
 
 JL_DLLEXPORT void jl_gc_enable_foreign_sweepfunc(jl_ptls_t ptls, jl_value_t * bj);
 

@@ -1572,6 +1572,16 @@ JL_DLLEXPORT int jl_gc_mark_queue_obj(jl_ptls_t ptls, jl_value_t *obj)
     return gc_mark_queue_obj(&ptls->gc_cache, ptls->last_gc_mark_sp, obj);
 }
 
+JL_DLLEXPORT void jl_gc_mark_queue_objarray(jl_ptls_t ptls, jl_value_t *parent, 
+                                            jl_value_t **objs, size_t nobjs)
+{
+    gc_mark_objarray_t data = { parent, objs, objs + nobjs, 0 };
+    gc_mark_stack_push(&ptls->gc_cache, ptls->last_gc_mark_sp,
+                       gc_mark_label_addrs[GC_MARK_L_objarray],
+                       &data, sizeof(data), 1);
+}
+
+
 // Check if `nptr` is tagged for `old + refyoung`,
 // Push the object to the remset and update the `nptr` counter if necessary.
 STATIC_INLINE void gc_mark_push_remset(jl_ptls_t ptls, jl_value_t *obj, uintptr_t nptr)

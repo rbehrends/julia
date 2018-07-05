@@ -483,12 +483,20 @@ uintptr_t mark_stack(jl_ptls_t ptls, jl_value_t *p)
 uintptr_t mark_stack_data(jl_ptls_t ptls, jl_value_t *p)
 {
     dynstack_t *stk = (dynstack_t *)p;
-    uintptr_t n = 0;
-    for (size_t i = 0; i < stk->size; i++) {
-        if (jl_gc_mark_queue_obj(ptls, stk->data[i]))
-            n++;
+    // Alternate between two marking approaches for testing so
+    // that we test both.
+    if (gc_counter_full & 1) {
+        jl_gc_mark_queue_objarray(ptls, p, stk->data, stk->size);
+        return 0;
     }
-    return n;
+    else {
+      uintptr_t n = 0;
+      for (size_t i = 0; i < stk->size; i++) {
+          if (jl_gc_mark_queue_obj(ptls, stk->data[i]))
+              n++;
+      }
+      return n;
+    }
 }
 
 void sweep_stack_data(jl_value_t *p)
