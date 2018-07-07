@@ -536,18 +536,18 @@ int main()
     // Install callbacks. This should happen before `jl_init()` and
     // before any GC is called.
 
-    jl_gc_register_callback(notify_external_alloc, alloc_bigval);
-    jl_gc_register_callback(notify_external_free, free_bigval);
+    jl_gc_set_cb_notify_external_alloc(alloc_bigval, 1);
+    jl_gc_set_cb_notify_external_free(free_bigval, 1);
 
     jl_gc_enable_conservative_scanning();
     jl_init();
     ptls = jl_get_ptls_states();
-    jl_gc_register_callback(root_scanner, root_scanner);
-    jl_gc_register_callback(pre_gc, pre_gc_func);
-    jl_gc_register_callback(post_gc, post_gc_func);
+    jl_gc_set_cb_root_scanner(root_scanner, 1);
+    jl_gc_set_cb_pre_gc(pre_gc_func, 1);
+    jl_gc_set_cb_post_gc(post_gc_func, 1);
     // Test that deregistration works
-    jl_gc_register_callback(root_scanner, abort_with_error);
-    jl_gc_deregister_callback(root_scanner, abort_with_error);
+    jl_gc_set_cb_root_scanner(abort_with_error, 1);
+    jl_gc_set_cb_root_scanner(abort_with_error, 0);
     // Create module to store types in.
     module = jl_new_module(jl_symbol("TestGCExt"));
     module->parent = jl_main_module;

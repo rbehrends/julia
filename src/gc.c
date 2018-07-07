@@ -10,16 +10,23 @@ extern "C" {
 
 // Linked list of callback functions
 
+typedef void (*jl_gc_cb_func_t)(void);
+
 typedef struct jl_gc_callback_list_t {
     struct jl_gc_callback_list_t *next;
     jl_gc_cb_func_t func;
 } jl_gc_callback_list_t;
 
-static jl_gc_callback_list_t *gc_callbacks[JL_GC_NUM_CALLBACKS];
+static jl_gc_callback_list_t *gc_cblist_root_scanner;
+static jl_gc_callback_list_t *gc_cblist_task_scanner;
+static jl_gc_callback_list_t *gc_cblist_pre_gc;
+static jl_gc_callback_list_t *gc_cblist_post_gc;
+static jl_gc_callback_list_t *gc_cblist_notify_external_alloc;
+static jl_gc_callback_list_t *gc_cblist_notify_external_free;
 
 #define gc_invoke_callbacks(kind, args) \
     do { \
-        for (jl_gc_callback_list_t *cb = gc_callbacks[JL_GC_CB_##kind]; \
+        for (jl_gc_callback_list_t *cb = gc_cblist_##kind; \
                 cb != NULL; \
                 cb = cb->next) \
         { \
@@ -27,10 +34,9 @@ static jl_gc_callback_list_t *gc_callbacks[JL_GC_NUM_CALLBACKS];
         } \
     } while (0)
 
-JL_DLLEXPORT void _jl_gc_register_callback(jl_gc_callback_t kind,
+static void jl_gc_register_callback(jl_gc_callback_list_t **list,
         jl_gc_cb_func_t func)
 {
-    jl_gc_callback_list_t **list = gc_callbacks + kind;
     while (*list != NULL) {
         if ((*list)->func == func)
             return;
@@ -41,10 +47,9 @@ JL_DLLEXPORT void _jl_gc_register_callback(jl_gc_callback_t kind,
     (*list)->func = func;
 }
 
-JL_DLLEXPORT void _jl_gc_deregister_callback(jl_gc_callback_t kind,
+static void jl_gc_deregister_callback(jl_gc_callback_list_t **list,
         jl_gc_cb_func_t func)
 {
-    jl_gc_callback_list_t **list = gc_callbacks + kind;
     while (*list != NULL) {
         if ((*list)->func == func) {
             jl_gc_callback_list_t *tmp = *list;
@@ -55,6 +60,69 @@ JL_DLLEXPORT void _jl_gc_deregister_callback(jl_gc_callback_t kind,
         list = &((*list)->next);
     }
 }
+
+#define jl_gc_cb_setter(kind) \
+    JL_DLLEXPORT void jl_gc_set_cb_##kind(jl_gc_cb_##kind##_t cb, \
+            int onoff) \
+    { \
+      if (onoff) { \
+        jl_gc_register_callback(&gc_cblist_##kind, (jl_gc_cb_func_t) cb); \
+      } \
+      else { \
+        jl_gc_deregister_callback(&gc_cblist_##kind, (jl_gc_cb_func_t) cb); \
+      } \
+    }
+
+JL_DLLEXPORT void jl_gc_set_cb_root_scanner(jl_gc_cb_root_scanner_t cb, int onoff)
+{
+    if (onoff)
+        jl_gc_register_callback(&gc_cblist_root_scanner, (jl_gc_cb_func_t)cb);
+    else
+        jl_gc_deregister_callback(&gc_cblist_root_scanner, (jl_gc_cb_func_t)cb);
+}
+
+JL_DLLEXPORT void jl_gc_set_cb_task_scanner(jl_gc_cb_task_scanner_t cb, int onoff)
+{
+    if (onoff)
+        jl_gc_register_callback(&gc_cblist_task_scanner, (jl_gc_cb_func_t)cb);
+    else
+        jl_gc_deregister_callback(&gc_cblist_task_scanner, (jl_gc_cb_func_t)cb);
+}
+
+JL_DLLEXPORT void jl_gc_set_cb_pre_gc(jl_gc_cb_pre_gc_t cb, int onoff)
+{
+    if (onoff)
+        jl_gc_register_callback(&gc_cblist_pre_gc, (jl_gc_cb_func_t)cb);
+    else
+        jl_gc_deregister_callback(&gc_cblist_pre_gc, (jl_gc_cb_func_t)cb);
+}
+
+JL_DLLEXPORT void jl_gc_set_cb_post_gc(jl_gc_cb_post_gc_t cb, int onoff)
+{
+    if (onoff)
+        jl_gc_register_callback(&gc_cblist_post_gc, (jl_gc_cb_func_t)cb);
+    else
+        jl_gc_deregister_callback(&gc_cblist_post_gc, (jl_gc_cb_func_t)cb);
+}
+
+JL_DLLEXPORT void jl_gc_set_cb_notify_external_alloc(jl_gc_cb_notify_external_alloc_t cb, int onoff)
+{
+    if (onoff)
+        jl_gc_register_callback(&gc_cblist_notify_external_alloc, (jl_gc_cb_func_t)cb);
+    else
+        jl_gc_deregister_callback(&gc_cblist_notify_external_alloc, (jl_gc_cb_func_t)cb);
+}
+
+JL_DLLEXPORT void jl_gc_set_cb_notify_external_free(jl_gc_cb_notify_external_free_t cb, int onoff)
+{
+    if (onoff)
+        jl_gc_register_callback(&gc_cblist_notify_external_free, (jl_gc_cb_func_t)cb);
+    else
+        jl_gc_deregister_callback(&gc_cblist_notify_external_free, (jl_gc_cb_func_t)cb);
+}
+
+
+
 
 // Protect all access to `finalizer_list_marked` and `to_finalize`.
 // For accessing `ptls->finalizers`, the lock is needed if a thread
