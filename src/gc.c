@@ -2298,6 +2298,7 @@ mark: {
             int stkbuf = (ta->stkbuf != (void*)(intptr_t)-1 && ta->stkbuf != NULL);
             int16_t tid = ta->tid;
             jl_ptls_t ptls2 = jl_all_tls_states[tid];
+            ptls->last_gc_mark_sp = &sp;
             gc_invoke_callbacks(task_scanner, (ta, ta == ptls2->root_task));
             if (stkbuf) {
 #ifdef COPY_STACKS
