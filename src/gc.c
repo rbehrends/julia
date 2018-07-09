@@ -2898,6 +2898,8 @@ void jl_init_thread_heap(jl_ptls_t ptls)
 // System-wide initializations
 void jl_gc_init(void)
 {
+    if (getenv("JULIA_PERMIT_CONSERVATIVE_GC"))
+        jl_gc_enable_conservative_scanning();
     jl_gc_init_page();
     gc_debug_init();
 
