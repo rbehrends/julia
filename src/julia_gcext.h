@@ -83,6 +83,6 @@ JL_DLLEXPORT int jl_gc_mark_queue_obj(jl_ptls_t ptls, jl_value_t *obj);
 JL_DLLEXPORT void jl_gc_mark_queue_objarray(jl_ptls_t ptls, jl_value_t *parent,
     jl_value_t **objs, size_t nobjs);
 
-JL_DLLEXPORT void jl_gc_enable_foreign_sweepfunc(jl_ptls_t ptls, jl_value_t * bj);
+JL_DLLEXPORT void jl_gc_schedule_foreign_sweepfunc(jl_ptls_t ptls, jl_value_t * bj);
 
 #endif // _JULIA_GCEXT_H

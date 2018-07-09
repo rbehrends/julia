@@ -379,7 +379,7 @@ JL_DLLEXPORT jl_value_t *stk_make()
     *(dynstack_t **)hdr = NULL;
     dynstack_t *stk = allocate_stack_mem(8);
     *(dynstack_t **)hdr = stk;
-    jl_gc_enable_foreign_sweepfunc(ptls, (jl_value_t *)(stk));
+    jl_gc_schedule_foreign_sweepfunc(ptls, (jl_value_t *)(stk));
     JL_GC_POP();
     return hdr;
 }
@@ -407,7 +407,7 @@ JL_DLLEXPORT void stk_push(jl_value_t *s, jl_value_t *v)
         memcpy(newstk->data, stk->data, sizeof(jl_value_t *) * stk->size);
         *(dynstack_t **)s = newstk;
         newstk->data[newstk->size++] = v;
-        jl_gc_enable_foreign_sweepfunc(ptls, (jl_value_t *)(newstk));
+        jl_gc_schedule_foreign_sweepfunc(ptls, (jl_value_t *)(newstk));
         jl_gc_wb_back((jl_value_t *)newstk);
         jl_gc_wb(s, (jl_value_t *)newstk);
     }
