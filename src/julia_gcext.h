@@ -49,6 +49,10 @@ JL_DLLEXPORT size_t jl_gc_external_obj_hdr_size(void);
 // calling `jl_init()`.
 JL_DLLEXPORT void jl_gc_enable_conservative_scanning(void);
 
+// The following function tests whether conservative scanning has
+// been enabled.
+JL_DLLEXPORT int jl_gc_conservative_scanning_enabled(void);
+
 // Returns the base address of a memory block, assuming it
 // is stored in a julia memory pool. Return NULL otherwise.
 JL_DLLEXPORT jl_value_t *jl_gc_internal_obj_base_ptr(void *p);

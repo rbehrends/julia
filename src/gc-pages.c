@@ -28,6 +28,11 @@ JL_DLLEXPORT void jl_gc_enable_conservative_scanning(void)
     permit_conservative_scans = 1;
 }
 
+JL_DLLEXPORT int jl_gc_conservative_scanning_enabled(void)
+{
+    return permit_conservative_scans;
+}
+
 void jl_gc_init_page(void)
 {
     if (GC_PAGE_SZ * block_pg_cnt < jl_page_size)
