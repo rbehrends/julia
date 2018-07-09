@@ -63,9 +63,9 @@ static void jl_gc_deregister_callback(jl_gc_callback_list_t **list,
 
 #define jl_gc_cb_setter(kind) \
     JL_DLLEXPORT void jl_gc_set_cb_##kind(jl_gc_cb_##kind##_t cb, \
-            int onoff) \
+            int enable) \
     { \
-      if (onoff) { \
+      if (enable) { \
         jl_gc_register_callback(&gc_cblist_##kind, (jl_gc_cb_func_t) cb); \
       } \
       else { \
@@ -73,49 +73,49 @@ static void jl_gc_deregister_callback(jl_gc_callback_list_t **list,
       } \
     }
 
-JL_DLLEXPORT void jl_gc_set_cb_root_scanner(jl_gc_cb_root_scanner_t cb, int onoff)
+JL_DLLEXPORT void jl_gc_set_cb_root_scanner(jl_gc_cb_root_scanner_t cb, int enable)
 {
-    if (onoff)
+    if (enable)
         jl_gc_register_callback(&gc_cblist_root_scanner, (jl_gc_cb_func_t)cb);
     else
         jl_gc_deregister_callback(&gc_cblist_root_scanner, (jl_gc_cb_func_t)cb);
 }
 
-JL_DLLEXPORT void jl_gc_set_cb_task_scanner(jl_gc_cb_task_scanner_t cb, int onoff)
+JL_DLLEXPORT void jl_gc_set_cb_task_scanner(jl_gc_cb_task_scanner_t cb, int enable)
 {
-    if (onoff)
+    if (enable)
         jl_gc_register_callback(&gc_cblist_task_scanner, (jl_gc_cb_func_t)cb);
     else
         jl_gc_deregister_callback(&gc_cblist_task_scanner, (jl_gc_cb_func_t)cb);
 }
 
-JL_DLLEXPORT void jl_gc_set_cb_pre_gc(jl_gc_cb_pre_gc_t cb, int onoff)
+JL_DLLEXPORT void jl_gc_set_cb_pre_gc(jl_gc_cb_pre_gc_t cb, int enable)
 {
-    if (onoff)
+    if (enable)
         jl_gc_register_callback(&gc_cblist_pre_gc, (jl_gc_cb_func_t)cb);
     else
         jl_gc_deregister_callback(&gc_cblist_pre_gc, (jl_gc_cb_func_t)cb);
 }
 
-JL_DLLEXPORT void jl_gc_set_cb_post_gc(jl_gc_cb_post_gc_t cb, int onoff)
+JL_DLLEXPORT void jl_gc_set_cb_post_gc(jl_gc_cb_post_gc_t cb, int enable)
 {
-    if (onoff)
+    if (enable)
         jl_gc_register_callback(&gc_cblist_post_gc, (jl_gc_cb_func_t)cb);
     else
         jl_gc_deregister_callback(&gc_cblist_post_gc, (jl_gc_cb_func_t)cb);
 }
 
-JL_DLLEXPORT void jl_gc_set_cb_notify_external_alloc(jl_gc_cb_notify_external_alloc_t cb, int onoff)
+JL_DLLEXPORT void jl_gc_set_cb_notify_external_alloc(jl_gc_cb_notify_external_alloc_t cb, int enable)
 {
-    if (onoff)
+    if (enable)
         jl_gc_register_callback(&gc_cblist_notify_external_alloc, (jl_gc_cb_func_t)cb);
     else
         jl_gc_deregister_callback(&gc_cblist_notify_external_alloc, (jl_gc_cb_func_t)cb);
 }
 
-JL_DLLEXPORT void jl_gc_set_cb_notify_external_free(jl_gc_cb_notify_external_free_t cb, int onoff)
+JL_DLLEXPORT void jl_gc_set_cb_notify_external_free(jl_gc_cb_notify_external_free_t cb, int enable)
 {
-    if (onoff)
+    if (enable)
         jl_gc_register_callback(&gc_cblist_notify_external_free, (jl_gc_cb_func_t)cb);
     else
         jl_gc_deregister_callback(&gc_cblist_notify_external_free, (jl_gc_cb_func_t)cb);
