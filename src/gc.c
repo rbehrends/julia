@@ -121,9 +121,6 @@ JL_DLLEXPORT void jl_gc_set_cb_notify_external_free(jl_gc_cb_notify_external_fre
         jl_gc_deregister_callback(&gc_cblist_notify_external_free, (jl_gc_cb_func_t)cb);
 }
 
-
-
-
 // Protect all access to `finalizer_list_marked` and `to_finalize`.
 // For accessing `ptls->finalizers`, the lock is needed if a thread
 // is going to realloc the buffer (of its own list) or accessing the
@@ -1446,6 +1443,34 @@ static void gc_sweep_perm_alloc(void)
     gc_sweep_sysimg();
     gc_time_sysimg_end(t0);
 }
+
+// The following is to clean up pages in preparation for conservative
+// garbage collection. Conservative garbage collection requires that
+// unused memory is zeroed; on the transition from precise to conservative
+// garbage collection we therefore walk all the chunks of all pools and
+// zero them. This will happen only once, thereafter other pages will be
+// zeroed upon reuse.
+
+int gc_cleanup_pages = 0;
+
+static void gc_do_cleanup_pages(void)
+{
+    for (int i = 0; i < jl_n_threads; i++) {
+        jl_gc_pool_t *pools = jl_all_tls_states[i]->heap.norm_pools;
+        for (int j = 0; j < JL_GC_N_POOLS; j++) {
+            // Pointer to the start of chunk of free objects
+            jl_taggedvalue_t *p = pools[j].newpages;
+            while (p) {
+                char *begin = gc_page_data(p);
+                char *end = begin + GC_PAGE_SZ;
+                memset((char *)p, 0, end - (char *)p);
+                p = p->next;
+            }
+        }
+    }
+    gc_cleanup_pages = 0;
+}
+
 
 
 // mark phase
@@ -2793,7 +2818,6 @@ static int _jl_gc_collect(jl_ptls_t ptls, int full)
 
 JL_DLLEXPORT void jl_gc_collect(int full)
 {
-    gc_invoke_callbacks(pre_gc, (full));
     jl_ptls_t ptls = jl_get_ptls_states();
     if (jl_gc_disable_counter) {
         gc_num.deferred_alloc += (gc_num.allocd + gc_num.interval);
@@ -2817,6 +2841,9 @@ JL_DLLEXPORT void jl_gc_collect(int full)
     // TODO (concurrently queue objects)
     // no-op for non-threading
     jl_gc_wait_for_the_world();
+    if (gc_cleanup_pages)
+        gc_do_cleanup_pages();
+    gc_invoke_callbacks(pre_gc, (full));
 
     if (!jl_gc_disable_counter) {
         JL_LOCK_NOGC(&finalizers_lock);
@@ -2898,8 +2925,6 @@ void jl_init_thread_heap(jl_ptls_t ptls)
 // System-wide initializations
 void jl_gc_init(void)
 {
-    if (getenv("JULIA_PERMIT_CONSERVATIVE_GC"))
-        jl_gc_enable_conservative_scanning();
     jl_gc_init_page();
     gc_debug_init();
 

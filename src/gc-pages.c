@@ -22,15 +22,17 @@ extern "C" {
 static int block_pg_cnt = DEFAULT_BLOCK_PG_ALLOC;
 static size_t current_pg_count = 0;
 static int permit_conservative_scans = 0;
+static jl_mutex_t conservative_scan_lock;
 
 JL_DLLEXPORT void jl_gc_enable_conservative_scanning(void)
 {
+    JL_LOCK_NOGC(&conservative_scan_lock);
+    if (!permit_conservative_scans) {
+        extern int gc_cleanup_pages;
+        gc_cleanup_pages = 1;
+    }
     permit_conservative_scans = 1;
-}
-
-JL_DLLEXPORT int jl_gc_conservative_scanning_enabled(void)
-{
-    return permit_conservative_scans;
+    JL_UNLOCK_NOGC(&conservative_scan_lock);
 }
 
 void jl_gc_init_page(void)
