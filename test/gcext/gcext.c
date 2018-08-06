@@ -558,7 +558,6 @@ int main()
     jl_gc_set_cb_notify_external_alloc(alloc_bigval, 1);
     jl_gc_set_cb_notify_external_free(free_bigval, 1);
 
-    jl_gc_enable_conservative_gc_support();
     jl_init();
     ptls = jl_get_ptls_states();
     jl_gc_set_cb_root_scanner(root_scanner, 1);
