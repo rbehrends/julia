@@ -1425,35 +1425,6 @@ static void gc_sweep_perm_alloc(void)
     gc_time_sysimg_end(t0);
 }
 
-// The following is to clean up pages in preparation for conservative
-// garbage collection. Conservative garbage collection requires that
-// unused memory is zeroed; on the transition from precise to conservative
-// garbage collection we therefore walk all the chunks of all pools and
-// zero them. This will happen only once, thereafter other pages will be
-// zeroed upon reuse.
-
-int jl_gc_cleanup_pages = 0;
-
-static void gc_do_cleanup_pages(void)
-{
-    for (int i = 0; i < jl_n_threads; i++) {
-        jl_gc_pool_t *pools = jl_all_tls_states[i]->heap.norm_pools;
-        for (int j = 0; j < JL_GC_N_POOLS; j++) {
-            // Pointer to the start of chunk of free objects
-            jl_taggedvalue_t *p = pools[j].newpages;
-            while (p) {
-                char *begin = gc_page_data(p);
-                char *end = begin + GC_PAGE_SZ;
-                memset((char *)p, 0, end - (char *)p);
-                p = p->next;
-            }
-        }
-    }
-    jl_gc_cleanup_pages = 0;
-}
-
-
-
 // mark phase
 
 JL_DLLEXPORT void jl_gc_queue_root(jl_value_t *ptr)
@@ -2818,8 +2789,6 @@ JL_DLLEXPORT void jl_gc_collect(int full)
     // TODO (concurrently queue objects)
     // no-op for non-threading
     jl_gc_wait_for_the_world();
-    if (jl_gc_cleanup_pages)
-        gc_do_cleanup_pages();
     gc_invoke_callbacks(pre_gc, (full));
 
     if (!jl_gc_disable_counter) {
