@@ -3232,65 +3232,6 @@ JL_DLLEXPORT jl_value_t *jl_gc_alloc_3w(void)
     return jl_gc_alloc(ptls, sizeof(void*) * 3, NULL);
 }
 
-STATIC_INLINE int is_valid_tag(void *p)
-{
-    jl_gc_pagemeta_t *meta = page_metadata(p);
-    if (!meta || !meta->ages)
-       return 0;
-
-    char *page = gc_page_data(p);
-    size_t off = (char *)p - page;
-    off -= GC_PAGE_OFFSET;
-    return off % meta->osize == 0;
-}
-
-STATIC_INLINE int is_valid_pool_obj(jl_taggedvalue_t *val)
-{
-    jl_value_t *datatype_type = (jl_value_t *)jl_datatype_type;
-    if (val->next == NULL)
-        return 0; // end of free list
-    val = (jl_taggedvalue_t *) gc_ptr_clear_tag(val, 3);
-    if (jl_valueof(val->next) == datatype_type)
-        return 1; // a type
-    jl_value_t *next = (jl_value_t *) gc_ptr_clear_tag(val->next, 3);
-    val = jl_astaggedvalue(next);
-    if (!is_valid_tag(val))
-        return 0;
-
-    // We now follow the header link. This must be either part
-    // of the free list (including NULL) or a type reference.
-    if (val->next == NULL)
-        return 0;
-    next = (jl_value_t *) gc_ptr_clear_tag(val->next, 3);
-    if (next == datatype_type)
-        return 1;
-    return 0;
-}
-
-
-JL_DLLEXPORT int jl_gc_is_internal_obj_alloc(jl_value_t *p)
-{
-    jl_gc_pagemeta_t *meta = page_metadata(p);
-    if (meta && meta->ages) {
-        char* page = gc_page_data(p);
-        // offset within page.
-        size_t off = (char*)p - page;
-        if (off < GC_PAGE_OFFSET)
-            return 0;
-        // offset within object
-        size_t off2 = (off - GC_PAGE_OFFSET);
-        size_t osize = meta->osize;
-        // if (osize == 0) return NULL;
-        off2 %= osize;
-        if (off2 != sizeof(jl_taggedvalue_t))
-            return 0;
-        if (off - off2 + osize > GC_PAGE_SZ)
-            return 0;
-        return 1;
-    }
-    return 0;
-}
-
 JL_DLLEXPORT jl_value_t *jl_gc_internal_obj_base_ptr(void *p)
 {
     p = (char *) p - 1;
@@ -3308,12 +3249,59 @@ JL_DLLEXPORT jl_value_t *jl_gc_internal_obj_base_ptr(void *p)
         if (off - off2 + osize > GC_PAGE_SZ)
             return NULL;
         jl_taggedvalue_t *val = (jl_taggedvalue_t *)((char *)p - off2);
-        if (!is_valid_pool_obj(val))
-            return NULL;
+        if (meta->nfree) {
+            if (val->bits.gc)
+                return jl_valueof(val);
+            unsigned obj_id = (off - off2 - GC_PAGE_OFFSET) / meta->osize;
+            if (!(meta->ages[obj_id / 8] & (1 << (obj_id % 8))))
+                return NULL;
+        } else {
+            jl_gc_pool_t *pool =
+                jl_all_tls_states[meta->thread_n]->heap.norm_pools + 
+                meta->pool_n;
+            jl_taggedvalue_t *newpages = pool->newpages;
+            if (newpages && gc_page_data(newpages) == meta->data) {
+                if ((char *)newpages <= (char *)val)
+                    return NULL;
+            }
+        }
         return jl_valueof(val);
     }
     return NULL;
 }
+
+JL_DLLEXPORT int jl_gc_is_internal_obj_alloc(jl_value_t *p)
+{
+    return jl_gc_internal_obj_base_ptr(p) == p;
+    jl_gc_pagemeta_t *meta = page_metadata(p);
+    if (meta && meta->ages) {
+        char* page = gc_page_data(p);
+        // offset within page.
+        size_t off = (char*)p - page;
+        if (off < GC_PAGE_OFFSET)
+            return 0;
+        // offset within object
+        size_t off2 = (off - GC_PAGE_OFFSET);
+        size_t osize = meta->osize;
+        // if (osize == 0) return NULL;
+        off2 %= osize;
+        if (off2 != sizeof(jl_taggedvalue_t))
+            return 0;
+        if (off - off2 + osize > GC_PAGE_SZ)
+            return 0;
+        if (meta->nfree == 0) {
+            jl_gc_pool_t *pool =
+                jl_all_tls_states[meta->thread_n]->heap.norm_pools + 
+                meta->pool_n;
+            jl_taggedvalue_t *newpages = pool->newpages;
+            if (newpages && gc_page_data(newpages) == meta->data)
+                return ((char *)(jl_astaggedvalue(p)) < (char *)newpages);
+        }
+        return 1;
+    }
+    return 0;
+}
+
 
 JL_DLLEXPORT size_t jl_gc_max_internal_obj_size(void)
 {
