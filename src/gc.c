@@ -3251,15 +3251,28 @@ JL_DLLEXPORT jl_value_t *jl_gc_internal_obj_base_ptr(void *p)
         jl_taggedvalue_t *val = (jl_taggedvalue_t *)((char *)p - off2);
         if (meta->nfree) {
             // meta->nfree != 0 =>
+            // All slots on the page are either in use or on a freelist.
             // If it's a marked or old page, return, as it can't be
             // on a free list.
             if (val->bits.gc)
                 return jl_valueof(val);
-            // If not on the free list, its age bit has been set when
-            // the page has been swept at the end of the last GC.
+            // If its age bit has been set during the last sweep, it
+            // can't be on the free list.
             unsigned obj_id = (off - off2 - GC_PAGE_OFFSET) / meta->osize;
-            if (!(meta->ages[obj_id / 8] & (1 << (obj_id % 8))))
-                return NULL;
+            if (!(meta->ages[obj_id / 8] & (1 << (obj_id % 8)))) {
+                // The slot has either been allocated since the last
+                // collection or is on the freelist. If on the freelist,
+                // it has to point to a slot in a pool page with the
+                // same osize and it has to point to the header word
+                // of the slot (rather than the data).
+                jl_taggedvalue_t *hdr = val->next;
+                meta = page_metadata(hdr);
+                if (meta && meta->osize == osize) {
+                    off = (char *) hdr - meta->data - GC_PAGE_OFFSET;
+                    if (off % osize == 0)
+                        return NULL;
+                }
+            }
             // Fall through to returning the base reference.
         } else {
             // meta->nfree == 0 =>
@@ -3302,6 +3315,9 @@ JL_DLLEXPORT int jl_gc_is_internal_obj_alloc(jl_value_t *p)
         if (off - off2 + osize > GC_PAGE_SZ)
             return 0;
         if (meta->nfree == 0) {
+            // We may be using a bump allocator from the newpages
+            // of the pool. In this case, the data past the end
+            // of the bump allocator pointer is invalid.
             jl_gc_pool_t *pool =
                 jl_all_tls_states[meta->thread_n]->heap.norm_pools + 
                 meta->pool_n;
