@@ -3266,6 +3266,10 @@ JL_DLLEXPORT jl_value_t *jl_gc_internal_obj_base_ptr(void *p)
                 // same osize and it has to point to the header word
                 // of the slot (rather than the data).
                 jl_taggedvalue_t *hdr = val->next;
+                // Special cases: end of the free list is a null pointer.
+                // `jl_buff_tag` must not be traced explicitly.
+                if (!hdr || (uintptr_t) hdr == jl_buff_tag)
+                    return NULL;
                 meta = page_metadata(hdr);
                 if (meta && meta->osize == osize) {
                     off = (char *) hdr - meta->data - GC_PAGE_OFFSET;
