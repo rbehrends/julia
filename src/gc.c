@@ -3256,9 +3256,13 @@ JL_DLLEXPORT jl_value_t *jl_gc_internal_obj_base_ptr(void *p)
                 jl_all_tls_states[meta->thread_n]->heap.norm_pools + 
                 meta->pool_n;
             jl_taggedvalue_t *newpages = pool->newpages;
-            if (newpages && gc_page_data(newpages) == meta->data) {
-                if ((char *)newpages <= (char *)val)
-                    return NULL;
+            while (newpages) {
+                char *data = gc_page_data(newpages);
+                if (data == meta->data) {
+                    if ((char *)newpages <= (char *)val)
+                        return NULL;
+                }
+                newpages = ((jl_taggedvalue_t *)data)->next;
             }
             // Fall through to returning the base reference.
         }
@@ -3295,8 +3299,15 @@ JL_DLLEXPORT int jl_gc_is_internal_obj_alloc(jl_value_t *p)
                 jl_all_tls_states[meta->thread_n]->heap.norm_pools + 
                 meta->pool_n;
             jl_taggedvalue_t *newpages = pool->newpages;
-            if (newpages && gc_page_data(newpages) == meta->data)
-                return ((char *)(jl_astaggedvalue(p)) < (char *)newpages);
+            while (newpages) {
+                char *data = gc_page_data(newpages);
+                if (data == meta->data) {
+                    if ((char *)newpages <= (char *)jl_astaggedvalue(p))
+                        return 0;
+                }
+                newpages = ((jl_taggedvalue_t *)data)->next;
+            }
+            return 1;
         }
         return 1;
     }
