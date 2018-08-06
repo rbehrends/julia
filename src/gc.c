@@ -3250,12 +3250,22 @@ JL_DLLEXPORT jl_value_t *jl_gc_internal_obj_base_ptr(void *p)
             return NULL;
         jl_taggedvalue_t *val = (jl_taggedvalue_t *)((char *)p - off2);
         if (meta->nfree) {
+            // meta->nfree != 0 =>
+            // If it's a marked or old page, return, as it can't be
+            // on a free list.
             if (val->bits.gc)
                 return jl_valueof(val);
+            // If not on the free list, its age bit has been set when
+            // the page has been swept at the end of the last GC.
             unsigned obj_id = (off - off2 - GC_PAGE_OFFSET) / meta->osize;
             if (!(meta->ages[obj_id / 8] & (1 << (obj_id % 8))))
                 return NULL;
+            // Fall through to returning the base reference.
         } else {
+            // meta->nfree == 0 =>
+            // This is either a page where all slots are in use or
+            // where the page is being bump-allocated from the
+            // respective newpages pointer.
             jl_gc_pool_t *pool =
                 jl_all_tls_states[meta->thread_n]->heap.norm_pools + 
                 meta->pool_n;
@@ -3264,6 +3274,7 @@ JL_DLLEXPORT jl_value_t *jl_gc_internal_obj_base_ptr(void *p)
                 if ((char *)newpages <= (char *)val)
                     return NULL;
             }
+            // Fall through to returning the base reference.
         }
         return jl_valueof(val);
     }
@@ -3272,7 +3283,8 @@ JL_DLLEXPORT jl_value_t *jl_gc_internal_obj_base_ptr(void *p)
 
 JL_DLLEXPORT int jl_gc_is_internal_obj_alloc(jl_value_t *p)
 {
-    return jl_gc_internal_obj_base_ptr(p) == p;
+    // This function uses an abbreviated version of the decision
+    // logic in `jl_gc_internal_obj_base_ptr()`.
     jl_gc_pagemeta_t *meta = page_metadata(p);
     if (meta && meta->ages) {
         char* page = gc_page_data(p);
