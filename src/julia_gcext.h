@@ -47,14 +47,6 @@ JL_DLLEXPORT size_t jl_gc_external_obj_hdr_size(void);
 // is stored in a julia memory pool. Return NULL otherwise.
 JL_DLLEXPORT jl_value_t *jl_gc_internal_obj_base_ptr(void *p);
 
-// Returns 1 if the argument points to actual memory that contains
-// or may contain an internal Julia object or 0 if it doesn't.
-//
-// Furthermore, on success the tag will either be valid tag if p refers
-// to a live object or point to an address that isn't one if it is
-// invalid.
-JL_DLLEXPORT int jl_gc_is_internal_obj_alloc(jl_value_t *p);
-
 // Field layout descriptor for custom types that do
 // not fit Julia layout conventions. This is associated with
 // jl_datatype_t instances where fielddesc_type == 3.

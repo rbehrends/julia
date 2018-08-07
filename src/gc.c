@@ -3270,49 +3270,6 @@ JL_DLLEXPORT jl_value_t *jl_gc_internal_obj_base_ptr(void *p)
     return NULL;
 }
 
-JL_DLLEXPORT int jl_gc_is_internal_obj_alloc(jl_value_t *p)
-{
-    // This function uses an abbreviated version of the decision
-    // logic in `jl_gc_internal_obj_base_ptr()`.
-    jl_gc_pagemeta_t *meta = page_metadata(p);
-    if (meta && meta->ages) {
-        char* page = gc_page_data(p);
-        // offset within page.
-        size_t off = (char*)p - page;
-        if (off < GC_PAGE_OFFSET)
-            return 0;
-        // offset within object
-        size_t off2 = (off - GC_PAGE_OFFSET);
-        size_t osize = meta->osize;
-        // if (osize == 0) return NULL;
-        off2 %= osize;
-        if (off2 != sizeof(jl_taggedvalue_t))
-            return 0;
-        if (off - off2 + osize > GC_PAGE_SZ)
-            return 0;
-        if (meta->nfree == 0 || meta->fl_begin_offset == (uint16_t) -1) {
-            // We may be using a bump allocator from the newpages
-            // of the pool. In this case, the data past the end
-            // of the bump allocator pointer is invalid.
-            jl_gc_pool_t *pool =
-                jl_all_tls_states[meta->thread_n]->heap.norm_pools + 
-                meta->pool_n;
-            jl_taggedvalue_t *newpages = pool->newpages;
-            if (newpages) {
-                char *data = gc_page_data(newpages);
-                if (data == meta->data) {
-                    if ((char *)newpages <= (char *)jl_astaggedvalue(p))
-                        return 0;
-                }
-            }
-            return 1;
-        }
-        return 1;
-    }
-    return 0;
-}
-
-
 JL_DLLEXPORT size_t jl_gc_max_internal_obj_size(void)
 {
     return GC_MAX_SZCLASS;
