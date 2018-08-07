@@ -1041,7 +1041,17 @@ static inline jl_taggedvalue_t *reset_page(const jl_gc_pool_t *p, jl_gc_pagemeta
     memset(pg->ages, 0, GC_PAGE_SZ / 8 / p->osize + 1);
     jl_taggedvalue_t *beg = (jl_taggedvalue_t*)(pg->data + GC_PAGE_OFFSET);
     jl_taggedvalue_t *next = (jl_taggedvalue_t*)pg->data;
-    next->next = fl;
+    if (fl == NULL) {
+        next->next = NULL;
+    }
+    else {
+        // insert free page after first page.
+        // this prevents unnecessary fragmentation from multiple pages
+        // being allocated from at the same time.
+        jl_taggedvalue_t *flnext = fl->next;
+        fl->next = next;
+        next->next = flnext;
+    }
     pg->has_young = 0;
     pg->has_marked = 0;
     pg->fl_begin_offset = -1;
@@ -3219,51 +3229,49 @@ JL_DLLEXPORT jl_value_t *jl_gc_internal_obj_base_ptr(void *p)
         if (off - off2 + osize > GC_PAGE_SZ)
             return NULL;
         jl_taggedvalue_t *val = (jl_taggedvalue_t *)((char *)p - off2);
-        if (meta->nfree == 0) {
-            return jl_valueof(val);
-        }
-        else {
-            jl_gc_pool_t *pool =
-                jl_all_tls_states[meta->thread_n]->heap.norm_pools + 
-                meta->pool_n;
-            jl_taggedvalue_t *newpages = pool->newpages;
-            if (newpages) {
-                char *data = gc_page_data(newpages);
-                if (data == meta->data) {
-                    // This is a page on the newpages list, where objects
-                    // are bump-allocated from.
-                    if ((char *)newpages <= (char *)val)
-                        return NULL;
-                }
-            }
-            // The slot is now either a valid object or on a freelist.
-            // If it's a marked or old page, return, as it can't be
-            // on a free list.
-            if (val->bits.gc)
-                return jl_valueof(val);
-            // If its age bit has been set during the last sweep, it
-            // can't be on the free list, otherwise we need more checks.
-            unsigned obj_id = (off - off2 - GC_PAGE_OFFSET) / meta->osize;
-            if (!(meta->ages[obj_id / 8] & (1 << (obj_id % 8)))) {
-                // The slot has either been allocated since the last
-                // collection or is on the freelist. If on the freelist,
-                // it has to point to a slot in a pool page with the
-                // same osize and it has to point to the header word
-                // of the slot (rather than the data).
-                jl_taggedvalue_t *hdr = val->next;
-                // Special cases: end of the free list is a null pointer.
-                // `jl_buff_tag` must not be traced explicitly.
-                if (!hdr || (uintptr_t) hdr == jl_buff_tag)
+        jl_gc_pool_t *pool =
+            jl_all_tls_states[meta->thread_n]->heap.norm_pools + 
+            meta->pool_n;
+        jl_taggedvalue_t *newpages = pool->newpages;
+        // Check if the page is being used for bump allocation.
+        if (newpages) {
+            char *data = gc_page_data(newpages);
+            if (data == meta->data) {
+                // This is the first page on the newpages list, where objects
+                // are bump-allocated from.
+                if ((char *)newpages <= (char *)val)
                     return NULL;
-                meta = page_metadata(hdr);
-                if (meta && meta->osize == osize) {
-                    off = (char *) hdr - meta->data - GC_PAGE_OFFSET;
-                    if (off % osize == 0)
-                        return NULL;
-                }
             }
-            return jl_valueof(val);
         }
+        // `val` now points to either an allocated object or an entry
+        // on a free list.
+        //
+        // If it's a marked or old page, return, as it can't be
+        // on a free list.
+        if (val->bits.gc)
+            return jl_valueof(val);
+        // If its age bit has been set during the last sweep, it
+        // can't be on the free list, otherwise we need more checks.
+        unsigned obj_id = (off - off2 - GC_PAGE_OFFSET) / meta->osize;
+        if (!(meta->ages[obj_id / 8] & (1 << (obj_id % 8)))) {
+            // The slot has either been allocated since the last
+            // collection or is on the freelist. If on the freelist,
+            // it has to point to a slot in a pool page with the
+            // same osize and it has to point to the header word
+            // of the slot (rather than the data).
+            jl_taggedvalue_t *hdr = val->next;
+            // Special cases: end of the free list is a null pointer.
+            // `jl_buff_tag` must not be traced explicitly.
+            if (!hdr || (uintptr_t) hdr == jl_buff_tag)
+                return NULL;
+            meta = page_metadata(hdr);
+            if (meta && meta->osize == osize) {
+                off = (char *) hdr - meta->data - GC_PAGE_OFFSET;
+                if (off % osize == 0)
+                    return NULL;
+            }
+        }
+        return jl_valueof(val);
     }
     return NULL;
 }
