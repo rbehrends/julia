@@ -3221,9 +3221,7 @@ JL_DLLEXPORT jl_value_t *jl_gc_internal_obj_base_ptr(void *p)
         if (meta->nfree == 0) {
             return jl_valueof(val);
         }
-        else if (meta->fl_begin_offset == (uint16_t)-1) {
-            // This is a page on the newpages list, where objects
-            // are bump-allocated from.
+        else {
             jl_gc_pool_t *pool =
                 jl_all_tls_states[meta->thread_n]->heap.norm_pools + 
                 meta->pool_n;
@@ -3231,20 +3229,19 @@ JL_DLLEXPORT jl_value_t *jl_gc_internal_obj_base_ptr(void *p)
             if (newpages) {
                 char *data = gc_page_data(newpages);
                 if (data == meta->data) {
+                    // This is a page on the newpages list, where objects
+                    // are bump-allocated from.
                     if ((char *)newpages <= (char *)val)
                         return NULL;
                 }
             }
-            return jl_valueof(val);
-        }
-        else {
-            // All slots on the page are either in use or on a freelist.
+            // The slot is now either a valid object or on a freelist.
             // If it's a marked or old page, return, as it can't be
             // on a free list.
             if (val->bits.gc)
                 return jl_valueof(val);
             // If its age bit has been set during the last sweep, it
-            // can't be on the free list.
+            // can't be on the free list, otherwise we need more checks.
             unsigned obj_id = (off - off2 - GC_PAGE_OFFSET) / meta->osize;
             if (!(meta->ages[obj_id / 8] & (1 << (obj_id % 8)))) {
                 // The slot has either been allocated since the last
