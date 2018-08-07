@@ -3218,8 +3218,26 @@ JL_DLLEXPORT jl_value_t *jl_gc_internal_obj_base_ptr(void *p)
         if (off - off2 + osize > GC_PAGE_SZ)
             return NULL;
         jl_taggedvalue_t *val = (jl_taggedvalue_t *)((char *)p - off2);
-        if (meta->nfree) {
-            // meta->nfree != 0 =>
+        if (meta->nfree == 0) {
+            return jl_valueof(val);
+        }
+        else if (meta->fl_begin_offset == (uint16_t)-1) {
+            // This is a page on the newpages list, where objects
+            // are bump-allocated from.
+            jl_gc_pool_t *pool =
+                jl_all_tls_states[meta->thread_n]->heap.norm_pools + 
+                meta->pool_n;
+            jl_taggedvalue_t *newpages = pool->newpages;
+            if (newpages) {
+                char *data = gc_page_data(newpages);
+                if (data == meta->data) {
+                    if ((char *)newpages <= (char *)val)
+                        return NULL;
+                }
+            }
+            return jl_valueof(val);
+        }
+        else {
             // All slots on the page are either in use or on a freelist.
             // If it's a marked or old page, return, as it can't be
             // on a free list.
@@ -3246,26 +3264,8 @@ JL_DLLEXPORT jl_value_t *jl_gc_internal_obj_base_ptr(void *p)
                         return NULL;
                 }
             }
-            // Fall through to returning the base reference.
-        } else {
-            // meta->nfree == 0 =>
-            // This is either a page where all slots are in use or
-            // where the page is being bump-allocated from the
-            // respective newpages pointer.
-            jl_gc_pool_t *pool =
-                jl_all_tls_states[meta->thread_n]->heap.norm_pools + 
-                meta->pool_n;
-            jl_taggedvalue_t *newpages = pool->newpages;
-            if (newpages) {
-                char *data = gc_page_data(newpages);
-                if (data == meta->data) {
-                    if ((char *)newpages <= (char *)val)
-                        return NULL;
-                }
-            }
-            // Fall through to returning the base reference.
+            return jl_valueof(val);
         }
-        return jl_valueof(val);
     }
     return NULL;
 }
@@ -3290,7 +3290,7 @@ JL_DLLEXPORT int jl_gc_is_internal_obj_alloc(jl_value_t *p)
             return 0;
         if (off - off2 + osize > GC_PAGE_SZ)
             return 0;
-        if (meta->nfree == 0) {
+        if (meta->nfree == 0 || meta->fl_begin_offset == (uint16_t) -1) {
             // We may be using a bump allocator from the newpages
             // of the pool. In this case, the data past the end
             // of the bump allocator pointer is invalid.
