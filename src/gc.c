@@ -457,7 +457,7 @@ static void gc_sweep_foreign_objs_in_list(arraylist_t *objs)
 {
     size_t p = 0;
     for (size_t i = 0; i < objs->len; i++) {
-        jl_value_t *v = objs->items[i++];
+        jl_value_t *v = (jl_value_t *)(objs->items[i++]);
         jl_datatype_t *t = (jl_datatype_t *)(jl_typeof(v));
         const jl_datatype_layout_t *layout = t->layout;
         jl_fielddescdyn_t *desc = (jl_fielddescdyn_t*)jl_dt_layout_fields(layout);
@@ -1614,7 +1614,8 @@ STATIC_INLINE int gc_mark_queue_obj(jl_gc_mark_cache_t *gc_cache, gc_mark_sp_t *
 
 JL_DLLEXPORT int jl_gc_mark_queue_obj(jl_ptls_t ptls, jl_value_t *obj)
 {
-    return gc_mark_queue_obj(&ptls->gc_cache, ptls->last_gc_mark_sp, obj);
+    return gc_mark_queue_obj(&ptls->gc_cache,
+            (gc_mark_sp_t *)(ptls->last_gc_mark_sp), obj);
 }
 
 JL_DLLEXPORT void jl_gc_mark_queue_objarray(jl_ptls_t ptls, jl_value_t *parent,
@@ -1622,7 +1623,7 @@ JL_DLLEXPORT void jl_gc_mark_queue_objarray(jl_ptls_t ptls, jl_value_t *parent,
 {
     gc_mark_objarray_t data = { parent, objs, objs + nobjs,
                                 jl_astaggedvalue(parent)->bits.gc & 2 };
-    gc_mark_stack_push(&ptls->gc_cache, ptls->last_gc_mark_sp,
+    gc_mark_stack_push(&ptls->gc_cache, (gc_mark_sp_t *)(ptls->last_gc_mark_sp),
                        gc_mark_label_addrs[GC_MARK_L_objarray],
                        &data, sizeof(data), 1);
 }
