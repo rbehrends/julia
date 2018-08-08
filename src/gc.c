@@ -465,7 +465,7 @@ static void gc_sweep_foreign_objs_in_list(arraylist_t *objs)
             desc->sweepfunc(v);
         }
         else {
-          objs->items[p++] = v;
+            objs->items[p++] = v;
         }
     }
     objs->len = p;
@@ -3237,7 +3237,7 @@ JL_DLLEXPORT jl_value_t *jl_gc_internal_obj_base_ptr(void *p)
                 return jl_valueof(val);
             }
             jl_gc_pool_t *pool =
-                jl_all_tls_states[meta->thread_n]->heap.norm_pools + 
+                jl_all_tls_states[meta->thread_n]->heap.norm_pools +
                 meta->pool_n;
             jl_taggedvalue_t *newpages = pool->newpages;
             // Check if the page is being allocated from via newpages
