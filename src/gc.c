@@ -3229,48 +3229,52 @@ JL_DLLEXPORT jl_value_t *jl_gc_internal_obj_base_ptr(void *p)
         if (off - off2 + osize > GC_PAGE_SZ)
             return NULL;
         jl_taggedvalue_t *val = (jl_taggedvalue_t *)((char *)p - off2);
-        jl_gc_pool_t *pool =
-            jl_all_tls_states[meta->thread_n]->heap.norm_pools + 
-            meta->pool_n;
-        jl_taggedvalue_t *newpages = pool->newpages;
-        // Check if the page is being used for bump allocation.
-        if (newpages) {
-            char *data = gc_page_data(newpages);
-            if (data == meta->data) {
-                // This is the first page on the newpages list, where objects
-                // are bump-allocated from.
-                if ((char *)newpages <= (char *)val)
-                    return NULL;
+        if (meta->fl_begin_offset == (uint16_t) -1) {
+            // either a full page or a page on the newpages list
+            if (meta->nfree == 0) {
+                // full page; `val` must be an object
+                return jl_valueof(val);
             }
+            jl_gc_pool_t *pool =
+                jl_all_tls_states[meta->thread_n]->heap.norm_pools + 
+                meta->pool_n;
+            jl_taggedvalue_t *newpages = pool->newpages;
+            // Check if the page is being allocated from via newpages
+            if (!newpages)
+                return NULL;
+            char *data = gc_page_data(newpages);
+            if (data != meta->data) {
+                // Pages on newpages form a linked list where only the
+                // first one is allocated from (see reset_page()).
+                // All other pages are empty.
+                return NULL;
+            }
+            // This is the first page on the newpages list, where objects
+            // are allocated from.
+            if ((char *)val >= (char *)newpages) // past allocation pointer
+                return NULL;
         }
         // `val` now points to either an allocated object or an entry
         // on a free list.
         //
-        // If it's a marked or old page, return, as it can't be
-        // on a free list.
+        // Fast path: marked or old objects cannot be on a free list.
         if (val->bits.gc)
             return jl_valueof(val);
-        // If its age bit has been set during the last sweep, it
-        // can't be on the free list, otherwise we need more checks.
-        unsigned obj_id = (off - off2 - GC_PAGE_OFFSET) / meta->osize;
-        if (!(meta->ages[obj_id / 8] & (1 << (obj_id % 8)))) {
-            // The slot has either been allocated since the last
-            // collection or is on the freelist. If on the freelist,
-            // it has to point to a slot in a pool page with the
-            // same osize and it has to point to the header word
-            // of the slot (rather than the data).
-            jl_taggedvalue_t *hdr = val->next;
-            // Special cases: end of the free list is a null pointer.
-            // `jl_buff_tag` must not be traced explicitly.
-            if (!hdr || (uintptr_t) hdr == jl_buff_tag)
+        jl_taggedvalue_t *hdr = val->next;
+        // Special cases: end of the free list is a null pointer.
+        // Objects with `jl_buff_tag` as their type must not be traced.
+        if (!hdr || (uintptr_t) hdr == jl_buff_tag)
+            return NULL;
+        // Any freelist pointer must point to another pool page with the
+        // same osize and point to the header word (whereas type descriptors
+        // point to the address past the header word)
+        meta = page_metadata(hdr);
+        if (meta && meta->osize == osize) {
+            off = (char *) hdr - meta->data - GC_PAGE_OFFSET;
+            if (off % osize == 0)
                 return NULL;
-            meta = page_metadata(hdr);
-            if (meta && meta->osize == osize) {
-                off = (char *) hdr - meta->data - GC_PAGE_OFFSET;
-                if (off % osize == 0)
-                    return NULL;
-            }
         }
+        // Not a freelist pointer, therefore a valid object.
         return jl_valueof(val);
     }
     return NULL;
