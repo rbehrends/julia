@@ -1048,9 +1048,10 @@ static inline jl_taggedvalue_t *reset_page(const jl_gc_pool_t *p, jl_gc_pagemeta
         // insert free page after first page.
         // this prevents unnecessary fragmentation from multiple pages
         // being allocated from at the same time.
-        jl_taggedvalue_t *flnext = fl->next;
-        fl->next = next;
-        next->next = flnext;
+        jl_taggedvalue_t *flpage = (jl_taggedvalue_t *)gc_page_data(fl);
+        next->next = flpage->next;
+        flpage->next = beg;
+        beg = fl;
     }
     pg->has_young = 0;
     pg->has_marked = 0;
