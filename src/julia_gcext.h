@@ -9,7 +9,7 @@
 // along with custom mark functions must not alter the GC state except
 // through calling jl_gc_mark_queue_obj() and jl_gc_mark_queue_objarray().
 typedef void (*jl_gc_cb_root_scanner_t)(int full);
-typedef void (*jl_gc_cb_task_scanner_t)(jl_task_t *task, int full);
+typedef uintptr_t (*jl_gc_cb_task_scanner_t)(jl_task_t *task, int full);
 
 // Callbacks that are invoked before and after a collection.
 typedef void (*jl_gc_cb_pre_gc_t)(int full);

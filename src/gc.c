@@ -24,13 +24,13 @@ static jl_gc_callback_list_t *gc_cblist_post_gc;
 static jl_gc_callback_list_t *gc_cblist_notify_external_alloc;
 static jl_gc_callback_list_t *gc_cblist_notify_external_free;
 
-#define gc_invoke_callbacks(ty, list, args) \
+#define gc_invoke_callbacks(ty, list, args, retop) \
     do { \
         for (jl_gc_callback_list_t *cb = list; \
                 cb != NULL; \
                 cb = cb->next) \
         { \
-            ((ty)(cb->func)) args; \
+            retop ((ty)(cb->func)) args; \
         } \
     } while (0)
 
@@ -889,7 +889,7 @@ JL_DLLEXPORT jl_value_t *jl_gc_big_alloc(jl_ptls_t ptls, size_t sz)
     if (v == NULL)
         jl_throw(jl_memory_exception);
     gc_invoke_callbacks(jl_gc_cb_notify_external_alloc_t,
-        gc_cblist_notify_external_alloc, (v, allocsz));
+        gc_cblist_notify_external_alloc, (v, allocsz), );
 #ifdef JULIA_ENABLE_THREADING
     jl_atomic_fetch_add(&gc_num.allocd, allocsz);
 #else
@@ -939,7 +939,7 @@ static bigval_t **sweep_big_list(int sweep_full, bigval_t **pv) JL_NOTSAFEPOINT
             memset(v, 0xbb, v->sz&~3);
 #endif
             gc_invoke_callbacks(jl_gc_cb_notify_external_free_t,
-                gc_cblist_notify_external_free, (v));
+                gc_cblist_notify_external_free, (v), );
             jl_free_aligned(v);
         }
         gc_time_count_big(old_bits, bits);
@@ -2306,9 +2306,14 @@ mark: {
             int16_t tid = ta->tid;
             jl_ptls_t ptls2 = jl_all_tls_states[tid];
             if (gc_cblist_task_scanner) {
+                int old = jl_astaggedvalue(new_obj)->bits.gc & 2;
+                uintptr_t young = 0;
                 export_gc_state(ptls, &sp);
                 gc_invoke_callbacks(jl_gc_cb_task_scanner_t,
-                    gc_cblist_task_scanner, (ta, ta == ptls2->root_task));
+                    gc_cblist_task_scanner, (ta, ta == ptls2->root_task),
+                    young += );
+                if (old && young)
+                    gc_mark_push_remset(ptls, new_obj, young * 4 + 3);
                 import_gc_state(ptls, &sp);
             }
 #ifdef COPY_STACKS
@@ -2660,7 +2665,7 @@ static int _jl_gc_collect(jl_ptls_t ptls, int full)
     if (gc_cblist_root_scanner) {
         export_gc_state(ptls, &sp);
         gc_invoke_callbacks(jl_gc_cb_root_scanner_t,
-            gc_cblist_root_scanner, (full));
+            gc_cblist_root_scanner, (full), );
         import_gc_state(ptls, &sp);
     }
     gc_mark_loop(ptls, sp);
@@ -2830,7 +2835,7 @@ JL_DLLEXPORT void jl_gc_collect(int full)
     // no-op for non-threading
     jl_gc_wait_for_the_world();
     gc_invoke_callbacks(jl_gc_cb_pre_gc_t,
-        gc_cblist_pre_gc, (full));
+        gc_cblist_pre_gc, (full), );
 
     if (!jl_gc_disable_counter) {
         JL_LOCK_NOGC(&finalizers_lock);
@@ -2856,7 +2861,7 @@ JL_DLLEXPORT void jl_gc_collect(int full)
         ptls->in_finalizer = was_in_finalizer;
     }
     gc_invoke_callbacks(jl_gc_cb_post_gc_t,
-        gc_cblist_post_gc, (full));
+        gc_cblist_post_gc, (full), );
 }
 
 void gc_mark_queue_all_roots(jl_ptls_t ptls, jl_gc_mark_sp_t *sp)
